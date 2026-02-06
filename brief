@@ -1,0 +1,255 @@
+Project Brief — HTML-First DI Web Framework (Spring Boot)
+Problem
+
+Modern web stacks are optimized for apps, not content.
+
+PHP/JSP had great HTML-first ergonomics, but terrible safety and discipline.
+
+Spring Boot has great backend power, but HTML rendering is second-class.
+
+React/Next give fast DX, but HTML becomes a byproduct, not the core artifact.
+
+Java web dev loop is slow and painful for content-heavy pages.
+
+There is no modern framework that combines:
+
+HTML-first output
+
+real backend power
+
+dependency injection into views
+
+fast, reactive developer experience
+
+Goal
+
+Build a modern, HTML-first web framework on top of Spring Boot where:
+
+An HTML file is a DI-managed component whose primary output is markup.
+
+Core Principles
+
+HTML is the primary artifact
+
+Pages are written as HTML, not controllers or components.
+
+Rendering is the purpose, not an optimization.
+
+Dependency Injection directly into templates
+
+Templates declare dependencies explicitly.
+
+No controllers, no model maps, no stringly-typed context.
+
+Clear phase separation
+
+Header = backend / composition
+
+Body = rendering only
+
+One-way data flow (backend → view)
+
+Compile-time safety
+
+Templates are compiled to Java.
+
+Missing variables, type errors, invalid expressions fail at compile time.
+
+Spring Boot–level backend
+
+Full access to DI, security, transactions, persistence, caching.
+
+No restrictions on backend complexity.
+
+Fast developer feedback loop
+
+Page-level hot reload.
+
+No full app restart on HTML changes.
+
+Browser auto-refresh on save.
+
+Page Structure
+
+Single file, two sections:
+
+@page "/post/{slug}"
+
+@inject PostService posts
+@inject RequestContext ctx
+@inject Auth auth
+
+@init {
+  post = posts.getBySlug(ctx.path("slug"));
+  canEdit = auth.isAdmin();
+}
+
+<!DOCTYPE html>
+<html>
+  <body>
+    <h1>{{ post.title }}</h1>
+
+    {{ if post.published }}
+      <article>{{ post.content }}</article>
+    {{ end }}
+
+    {{ if canEdit }}
+      <a href="/edit/{{ post.id }}">Edit</a>
+    {{ end }}
+  </body>
+</html>
+
+Compilation Model
+
+.page.html files are compiled into Java classes
+
+Each page becomes:
+
+a Spring bean
+
+request-scoped
+
+routable
+
+Templates compile to a render() method that returns HTML
+
+No runtime eval.
+No reflection-based templates.
+No model maps.
+
+Runtime Architecture
+
+One generic Spring MVC dispatcher
+
+A page registry that resolves route → page bean
+
+Pages rendered via render() → HTML string
+
+Spring Boot remains:
+
+the runtime
+
+the DI container
+
+the operational backbone
+
+Framework & Runtime Decision: Spring Boot (All Modes)
+
+Candi uses Spring Boot for both development and production.
+This was a deliberate decision after evaluating Quarkus + GraalVM as an alternative.
+
+Why not Quarkus?
+
+The core issue: Candi is a framework. Users write their backend services
+(PostService, AuthService, repositories) using the framework's DI, persistence,
+and security stack. You can't run dev on Spring Boot and prod on Quarkus —
+the user's service code (annotations, DI wiring, Spring Data, Spring Security)
+is tied to one framework. Swapping frameworks means rewriting user code.
+
+Unlike a build tool (where "npm run dev" vs "npm run build" can use different
+bundlers), a web framework IS the runtime. The user's code depends on it.
+
+Why Spring Boot specifically?
+
+1. Ecosystem: largest Java web ecosystem. Users bring existing Spring knowledge.
+2. Audience: most Java developers already know Spring. Lower adoption barrier.
+3. Hot reload: ClassLoader swapping works naturally on JVM. Core to Candi DX.
+4. Maturity: battle-tested for content-heavy web apps.
+
+Addressing memory footprint (the main concern with Spring Boot):
+
+Spring Boot 3.x provides three complementary strategies for production:
+
+1. Virtual Threads (Java 21)
+   spring.threads.virtual.enabled=true
+   Dramatically reduces per-thread memory overhead. Instead of 1MB stack per
+   platform thread, virtual threads use ~few KB. For content-heavy apps with
+   many concurrent requests, this alone cuts memory significantly.
+
+2. CDS (Class Data Sharing)
+   Shares class metadata across JVM instances. Reduces memory 20-30% and
+   improves startup time. Spring Boot 3.x has first-class CDS support via
+   spring-boot:build-image with CDS training runs.
+
+3. GraalVM Native Image (optional production build)
+   Spring Boot 3 officially supports AOT compilation to native image via
+   Spring AOT engine. This gives:
+   - Memory: ~50-80MB (vs ~200-300MB standard JVM)
+   - Startup: <1 second (vs ~2-3 seconds)
+   - Single binary deployment
+
+   This works because the compile target doesn't change — same Spring
+   annotations, same user code, same generated page classes. Only the
+   final compilation step differs (JVM bytecode vs native image).
+
+   Candi's role: provide GraalVM reflection hints for generated page classes
+   in the Spring Boot Starter (M7). User code needs no changes.
+
+Dev vs Prod mode:
+
+| Mode           | Runtime                        | Memory    | Why                           |
+|----------------|--------------------------------|-----------|-------------------------------|
+| candi:dev      | Spring Boot on JVM             | Don't care| Hot reload, ClassLoader swap  |
+| candi:build    | Spring Boot on JVM             | ~200-300MB| Default, zero config          |
+| candi:build    | Spring Boot + Virtual Threads  | ~100-150MB| One property change           |
+| candi:build    | Spring Boot + GraalVM native   | ~50-80MB  | Optional, needs GraalVM SDK   |
+
+Key insight: dev mode MUST run on JVM (ClassLoader tricks, in-process javac,
+reflection-based type checking). Production can optionally compile to native.
+The user's code and Candi's generated code stay identical across all modes.
+
+Developer Experience (DX)
+
+Dev mode features:
+
+File watcher on .page.html
+
+Incremental code generation
+
+Incremental Java compilation (pages only)
+
+Reload page classloader
+
+Auto browser refresh
+
+Target feedback loop:
+
+Save file → browser refresh in < 500ms
+
+Errors:
+
+Template errors shown as rendered error pages
+
+Precise file + line + snippet
+
+App stays running
+
+What This Is NOT
+
+Not a SPA framework
+
+Not a general-purpose template engine
+
+Not JSP revival
+
+Not MVC
+
+Not API-first
+
+Target Use Cases
+
+Blogs
+
+CMS
+
+Documentation sites
+
+Marketing pages
+
+Content-heavy SaaS frontends
+
+Lightweight admin panels
+
+One-Sentence Summary
+
+A Spring Boot–powered, HTML-first web framework where pages are dependency-injected components and rendering is the primary concern.
