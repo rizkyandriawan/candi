@@ -142,4 +142,33 @@ class CandiDemoIntegrationTest {
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/"));
     }
+
+    // ========== Layout rendering (M4) ==========
+
+    @Test
+    @Order(30)
+    void aboutPageRendersWithLayout() throws Exception {
+        mockMvc.perform(get("/about"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("<html>")))
+                .andExpect(content().string(containsString("<title>About Us</title>")))
+                .andExpect(content().string(containsString("<nav>Candi Demo</nav>")))
+                .andExpect(content().string(containsString("<h1>About Candi</h1>")))
+                .andExpect(content().string(containsString("<footer>Powered by Candi</footer>")));
+    }
+
+    // ========== Component rendering (M4) ==========
+
+    @Test
+    @Order(31)
+    void dashboardPageRendersWithLayoutAndComponents() throws Exception {
+        mockMvc.perform(get("/dashboard"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("<title>Dashboard</title>")))
+                .andExpect(content().string(containsString("<h1>Dashboard</h1>")))
+                .andExpect(content().string(containsString("alert-success")))
+                .andExpect(content().string(containsString("Welcome back!")))
+                .andExpect(content().string(containsString("alert-warning")))
+                .andExpect(content().string(containsString("3 items need review.")));
+    }
 }

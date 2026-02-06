@@ -15,12 +15,10 @@
     <modules>
         <module>candi-compiler</module>
         <module>candi-runtime</module>
+        <module>candi-dev-tools</module>
         <module>candi-maven-plugin</module>
         <module>candi-demo</module>
-        <!--
-        <module>candi-dev-tools</module>
         <module>candi-spring-boot-starter</module>
-        -->
     </modules>
 
     <properties>

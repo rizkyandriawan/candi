@@ -56,7 +56,19 @@ public class CodeGenerator {
         if (!page.fragments().isEmpty()) {
             line("import candi.runtime.FragmentNotFoundException;");
         }
+        if (page.layout() != null) {
+            line("import candi.runtime.CandiLayout;");
+            line("import candi.runtime.SlotProvider;");
+        }
+        if (hasComponentCalls()) {
+            line("import candi.runtime.CandiComponent;");
+            line("import org.springframework.context.ApplicationContext;");
+        }
         line("import java.util.Objects;");
+        if (hasComponentCalls()) {
+            line("import java.util.Map;");
+            line("import java.util.HashMap;");
+        }
         line("");
     }
 
@@ -86,6 +98,20 @@ public class CodeGenerator {
             line("");
             line("@Autowired");
             line("private " + inject.typeName() + " " + inject.variableName() + ";");
+        }
+
+        // ApplicationContext for component instantiation
+        if (hasComponentCalls()) {
+            line("");
+            line("@Autowired");
+            line("private ApplicationContext applicationContext;");
+        }
+
+        // Layout reference
+        if (page.layout() != null) {
+            line("");
+            line("@Autowired");
+            line("private CandiLayout " + layoutFieldName(page.layout().layoutName()) + ";");
         }
 
         // Init block fields — we need to extract variable declarations from the init code
@@ -159,7 +185,33 @@ public class CodeGenerator {
         line("@Override");
         line("public void render(HtmlOutput out) {");
         indent++;
-        if (page.body() != null) {
+        if (page.layout() != null) {
+            // Delegate to layout, passing slot content as lambda
+            String layoutField = layoutFieldName(page.layout().layoutName());
+            line(layoutField + ".render(out, (slotName, slotOut) -> {");
+            indent++;
+            line("switch (slotName) {");
+            indent++;
+            for (SlotFillNode slot : page.slotFills()) {
+                line("case \"" + escapeJavaString(slot.slotName()) + "\" -> {");
+                indent++;
+                generateBodyNodes(slot.body().children());
+                indent--;
+                line("}");
+            }
+            // Default slot: render the page body
+            line("default -> {");
+            indent++;
+            if (page.body() != null) {
+                generateBodyNodes(page.body().children());
+            }
+            indent--;
+            line("}");
+            indent--;
+            line("}");
+            indent--;
+            line("});");
+        } else if (page.body() != null) {
             generateBodyNodes(page.body().children());
         }
         indent--;
@@ -275,13 +327,25 @@ public class CodeGenerator {
     }
 
     private void generateComponentCall(ComponentCallNode node) {
-        // TODO: Full component support in M4
-        line("// component \"" + node.componentName() + "\" — not yet implemented");
+        String beanName = componentBeanName(node.componentName());
+        line("{");
+        indent++;
+        line("CandiComponent _comp = applicationContext.getBean(\"" + beanName + "\", CandiComponent.class);");
+        if (!node.params().isEmpty()) {
+            line("Map<String, Object> _params = new HashMap<>();");
+            for (var entry : node.params().entrySet()) {
+                String value = generateExpression(entry.getValue());
+                line("_params.put(\"" + escapeJavaString(entry.getKey()) + "\", " + value + ");");
+            }
+            line("_comp.setParams(_params);");
+        }
+        line("_comp.render(out);");
+        indent--;
+        line("}");
     }
 
     private void generateSlotRender(SlotRenderNode node) {
-        // TODO: Full slot support in M4
-        line("// slot \"" + node.slotName() + "\" — not yet implemented");
+        line("slots.renderSlot(\"" + escapeJavaString(node.slotName()) + "\", out);");
     }
 
     // ========== Expression Code Generation ==========
@@ -377,7 +441,7 @@ public class CodeGenerator {
      * Extract variable names from init code.
      * Looks for patterns like: varName = expr;
      */
-    static Set<String> extractInitVariables(String code) {
+    public static Set<String> extractInitVariables(String code) {
         Set<String> vars = new LinkedHashSet<>();
         for (String line : code.split("\n")) {
             String trimmed = line.trim();
@@ -449,6 +513,47 @@ public class CodeGenerator {
             sb.append("    ");
         }
         sb.append(text).append("\n");
+    }
+
+    private boolean hasComponentCalls() {
+        return hasComponentCallsInBody(page.body()) ||
+               page.fragments().stream().anyMatch(f -> hasComponentCallsInBody(f.body())) ||
+               page.slotFills().stream().anyMatch(s -> hasComponentCallsInBody(s.body()));
+    }
+
+    private boolean hasComponentCallsInBody(BodyNode body) {
+        if (body == null) return false;
+        for (Node node : body.children()) {
+            if (node instanceof ComponentCallNode) return true;
+            if (node instanceof IfNode ifNode) {
+                if (hasComponentCallsInBody(ifNode.thenBody())) return true;
+                if (ifNode.elseBody() != null && hasComponentCallsInBody(ifNode.elseBody())) return true;
+            }
+            if (node instanceof ForNode forNode) {
+                if (hasComponentCallsInBody(forNode.body())) return true;
+            }
+        }
+        return false;
+    }
+
+    private String layoutFieldName(String layoutName) {
+        // "base" → "baseLayout"
+        return layoutName + "Layout";
+    }
+
+    private String componentBeanName(String componentName) {
+        // "card" → "card__Component"
+        StringBuilder sb = new StringBuilder();
+        boolean nextUpper = true;
+        for (char c : componentName.toCharArray()) {
+            if (c == '-' || c == '_') {
+                nextUpper = true;
+            } else {
+                sb.append(nextUpper ? Character.toUpperCase(c) : c);
+                nextUpper = false;
+            }
+        }
+        return sb.toString() + "__Component";
     }
 
     static String escapeJavaString(String s) {

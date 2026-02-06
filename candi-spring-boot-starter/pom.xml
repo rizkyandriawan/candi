@@ -12,5 +12,51 @@
 
     <artifactId>candi-spring-boot-starter</artifactId>
     <name>Candi Spring Boot Starter</name>
-    <description>Auto-configuration for Spring Boot</description>
+    <description>Spring Boot auto-configuration, properties binding, and GraalVM hints for Candi</description>
+
+    <dependencies>
+        <!-- Core runtime -->
+        <dependency>
+            <groupId>candi</groupId>
+            <artifactId>candi-runtime</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- Dev tools (optional — only activated when on classpath + candi.dev=true) -->
+        <dependency>
+            <groupId>candi</groupId>
+            <artifactId>candi-dev-tools</artifactId>
+            <version>${project.version}</version>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- Spring Boot auto-configuration support -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-autoconfigure</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- Configuration properties metadata generation -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-configuration-processor</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- Test -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
 </project>
