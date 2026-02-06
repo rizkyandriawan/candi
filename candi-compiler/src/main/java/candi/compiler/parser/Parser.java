@@ -97,6 +97,7 @@ public class Parser {
             case KEYWORD_RAW -> parseRawExpression(start);
             case KEYWORD_INCLUDE -> parseInclude(start);
             case KEYWORD_COMPONENT -> parseComponentCall(start);
+            case KEYWORD_WIDGET -> parseWidgetCall(start);
             case KEYWORD_CONTENT -> parseContent(start);
             default -> parseExpressionOutput(start);
         };
@@ -174,6 +175,16 @@ public class Parser {
     private ComponentCallNode parseComponentCall(SourceLocation start) {
         consume(); // component keyword
         Token name = expect(TokenType.STRING_LITERAL, "component name");
+
+        Map<String, Expression> params = parseKeyValueParams();
+
+        expect(TokenType.EXPR_END, "'}}'");
+        return new ComponentCallNode(name.value(), params, start);
+    }
+
+    private ComponentCallNode parseWidgetCall(SourceLocation start) {
+        consume(); // widget keyword
+        Token name = expect(TokenType.STRING_LITERAL, "widget name");
 
         Map<String, Expression> params = parseKeyValueParams();
 

@@ -188,6 +188,20 @@ class LexerTest {
     }
 
     @Test
+    void testWidgetExpression() {
+        String source = "{{ widget \"alert\" type=\"error\" message=\"Oops\" }}";
+        Lexer lexer = new Lexer(source, "test.jhtml");
+        List<Token> tokens = lexer.tokenize();
+
+        assertEquals(TokenType.EXPR_START, tokens.get(0).type());
+        assertEquals(TokenType.KEYWORD_WIDGET, tokens.get(1).type());
+        assertEquals(TokenType.STRING_LITERAL, tokens.get(2).type());
+        assertEquals("alert", tokens.get(2).value());
+        assertEquals(TokenType.IDENTIFIER, tokens.get(3).type());
+        assertEquals("type", tokens.get(3).value());
+    }
+
+    @Test
     void testContentExpression() {
         String source = "{{ content }}";
         Lexer lexer = new Lexer(source, "test.page.html");

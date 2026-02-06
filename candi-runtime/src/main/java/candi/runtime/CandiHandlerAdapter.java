@@ -64,11 +64,16 @@ public class CandiHandlerAdapter implements HandlerAdapter {
         // 1. Get request-scoped page bean
         CandiPage page = applicationContext.getBean(beanName, CandiPage.class);
 
-        // 2. Run init()
+        // 2. Run init() — shared setup, always runs
         page.init();
 
-        // 3. Handle action for non-GET/HEAD methods via reflection
+        // 3. Handle action for non-GET/HEAD methods
         if (!RENDER_METHODS.contains(method)) {
+            // Call onPost() for POST requests before action dispatch
+            if ("POST".equals(method)) {
+                page.onPost();
+            }
+
             ActionResult result = invokeAction(page, method);
 
             switch (result) {
@@ -86,11 +91,14 @@ public class CandiHandlerAdapter implements HandlerAdapter {
             }
         }
 
-        // 4. Render
+        // 4. onGet() — data loading before render (skipped on redirect)
+        page.onGet();
+
+        // 5. Render
         HtmlOutput out = new HtmlOutput();
         page.render(out);
 
-        // 5. Write response
+        // 6. Write response
         response.setContentType("text/html;charset=UTF-8");
         response.getWriter().write(out.toHtml());
 

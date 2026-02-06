@@ -217,6 +217,16 @@ public class Lexer {
                 // Optional params: key=value
                 lexKeyValueParams();
             }
+            case "widget" -> {
+                advance("widget".length());
+                tokens.add(new Token(TokenType.KEYWORD_WIDGET, "widget", start));
+                skipWhitespace();
+                // Widget name as string literal
+                tokens.add(readStringLiteral());
+                skipWhitespace();
+                // Optional params: key=value
+                lexKeyValueParams();
+            }
             case "content" -> {
                 advance("content".length());
                 tokens.add(new Token(TokenType.KEYWORD_CONTENT, "content", start));

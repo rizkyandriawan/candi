@@ -14,7 +14,8 @@ public enum TokenType {
     KEYWORD_IN,     // in
     KEYWORD_RAW,    // raw
     KEYWORD_INCLUDE,   // include
-    KEYWORD_COMPONENT, // component
+    KEYWORD_COMPONENT, // component (legacy, kept for backward compat)
+    KEYWORD_WIDGET,    // widget
     KEYWORD_CONTENT,   // content (layout placeholder)
 
     // Literals

@@ -15,7 +15,7 @@ import java.util.Map;
  *
  * <div class="alert alert-{{ type }}">{{ message }}</div>
  */
-@Component("Alert__Component")
+@Component("Alert__Widget")
 @Scope("prototype")
 public class Alert__Component implements CandiComponent {
 

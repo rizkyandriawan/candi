@@ -2,22 +2,36 @@ package candi.runtime;
 
 /**
  * Core interface implemented by all generated page classes.
- * Each .page.html compiles to a class implementing this interface.
+ * Each .jhtml page compiles to a class implementing this interface.
  *
- * In v2, action dispatch is handled via reflection on @Post/@Delete/etc annotated methods.
- * Fragments are replaced by components and includes.
+ * Lifecycle:
+ *   1. init() — always runs (shared setup)
+ *   2. For GET/HEAD: onGet() → render()
+ *   3. For POST: onPost() → @Post action → redirect or render()
+ *   4. For PUT/DELETE/PATCH: @Action → redirect or render()
  */
 public interface CandiPage {
 
     /**
-     * Initialize page state. Called once per request before rendering.
-     * This is where the init() method code runs — fetching data, computing variables.
+     * Shared setup. Called once per request before anything else.
+     * Use for lightweight initialization (setting references, etc.).
      */
     default void init() {}
 
     /**
+     * Called for GET/HEAD requests before rendering.
+     * Put data loading here — this is skipped when POST/DELETE/etc redirects.
+     */
+    default void onGet() {}
+
+    /**
+     * Called for POST requests before @Post action dispatch.
+     * Use for shared POST setup (CSRF validation, common form parsing, etc.).
+     */
+    default void onPost() {}
+
+    /**
      * Render the full page HTML.
-     * This is the compiled template of the .page.html file.
      */
     void render(HtmlOutput out);
 }

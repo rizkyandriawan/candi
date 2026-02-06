@@ -1,18 +1,17 @@
 package candi.compiler.codegen;
 
+import candi.compiler.JavaAnalyzer;
 import candi.compiler.ast.*;
 import candi.compiler.expr.Expression;
 
 import java.util.*;
 
 /**
- * Generates Java source code from a v2 page AST.
- * Takes the user's Java class and injects:
- * - implements CandiPage
- * - @Component @Scope(REQUEST) annotations
- * - @CandiRoute annotation
- * - import statements
- * - render(HtmlOutput out) method from template
+ * Generates Java source code from a .jhtml AST.
+ * Branches by file type (PAGE, LAYOUT, WIDGET) to produce different Spring beans:
+ *   PAGE   → implements CandiPage, @Component, @Scope(REQUEST), @CandiRoute
+ *   LAYOUT → implements CandiLayout, @Component("nameLayout"), singleton
+ *   WIDGET → implements CandiComponent, @Component("Name__Widget"), @Scope("prototype")
  */
 public class CodeGenerator {
 
@@ -68,28 +67,33 @@ public class CodeGenerator {
     }
 
     /**
-     * Generate the class by transforming the user's Java source:
-     * - Add class-level annotations
-     * - Add 'implements CandiPage'
-     * - Inject render() method before closing brace
-     * - For layouts: inject render(HtmlOutput, SlotProvider) instead
+     * Generate the class by transforming the user's Java source.
+     * Branches by file type for different annotations and interfaces.
      */
     private void generateClassWithRender() {
         String javaSource = page.javaSource();
 
         if (javaSource == null || javaSource.isEmpty()) {
-            // Body-only page (include file) — generate minimal class
+            // Body-only file (include file) — generate minimal class
             generateMinimalClass();
             return;
         }
 
+        JavaAnalyzer.FileType fileType = page.fileType();
+
+        switch (fileType) {
+            case PAGE -> generatePageClass(javaSource);
+            case LAYOUT -> generateLayoutClass(javaSource);
+            case WIDGET -> generateWidgetClass(javaSource);
+        }
+    }
+
+    // ========== PAGE Generation ==========
+
+    private void generatePageClass(String javaSource) {
         // Build methods set for @CandiRoute
         Set<String> methods = new LinkedHashSet<>();
         methods.add("GET");
-        for (String action : page.fieldNames()) {
-            // Action methods are detected from annotations, not field names
-        }
-        // Check the Java source for action annotations
         if (javaSource.contains("@Post")) methods.add("POST");
         if (javaSource.contains("@Put")) methods.add("PUT");
         if (javaSource.contains("@Delete")) methods.add("DELETE");
@@ -107,8 +111,7 @@ public class CodeGenerator {
             line("@CandiRoute(path = \"" + escapeJavaString(page.pagePath()) + "\", methods = {" + methodsStr + "})");
         }
 
-        // Transform the class declaration: add "implements CandiPage"
-        // Find the class line and modify it
+        // Transform class
         String[] lines = javaSource.split("\n");
         boolean classStarted = false;
         boolean needsApplicationContext = hasComponentCalls() &&
@@ -117,20 +120,16 @@ public class CodeGenerator {
         for (String srcLine : lines) {
             String trimmed = srcLine.trim();
 
-            // Skip package/import statements — already generated above
-            if (trimmed.startsWith("package ") || trimmed.startsWith("import ")) {
-                continue;
-            }
+            // Skip package/import statements
+            if (trimmed.startsWith("package ") || trimmed.startsWith("import ")) continue;
 
             // Skip user annotations that we handle ourselves
-            if (trimmed.startsWith("@Page(") || trimmed.startsWith("@Layout(")) {
-                continue;
-            }
+            if (trimmed.startsWith("@Page(") || trimmed.startsWith("@Layout(") ||
+                trimmed.startsWith("@Layout") || trimmed.startsWith("@Widget")) continue;
 
             // Transform class declaration
             if (!classStarted && trimmed.contains("class " + page.className())) {
                 String modifiedLine = trimmed;
-                // Add 'implements CandiPage' if not already present
                 if (!modifiedLine.contains("implements")) {
                     modifiedLine = modifiedLine.replace("{", "implements CandiPage {");
                 } else if (!modifiedLine.contains("CandiPage")) {
@@ -140,7 +139,6 @@ public class CodeGenerator {
                 classStarted = true;
                 indent++;
 
-                // Inject ApplicationContext if needed for components
                 if (needsApplicationContext) {
                     line("");
                     line("@Autowired");
@@ -156,12 +154,9 @@ public class CodeGenerator {
                 continue;
             }
 
-            // Skip the closing brace of the class — we'll add render() then close
-            if (classStarted && trimmed.equals("}") && isLastClosingBrace(lines, srcLine)) {
-                continue;
-            }
+            // Skip the closing brace of the class
+            if (classStarted && trimmed.equals("}") && isLastClosingBrace(lines, srcLine)) continue;
 
-            // Emit the line as-is (preserving user's code)
             if (classStarted) {
                 line(trimmed);
             } else {
@@ -171,35 +166,17 @@ public class CodeGenerator {
 
         // Generate render method
         line("");
-        generateRender();
+        generatePageRender();
 
-        // Close class
         indent--;
         line("}");
     }
 
-    private void generateMinimalClass() {
-        line("@Component");
-        line("@Scope(WebApplicationContext.SCOPE_REQUEST)");
-        line("public class " + className + " implements CandiPage {");
-        indent++;
-        if (hasComponentCalls()) {
-            line("");
-            line("@Autowired");
-            line("private ApplicationContext _applicationContext;");
-        }
-        line("");
-        generateRender();
-        indent--;
-        line("}");
-    }
-
-    private void generateRender() {
+    private void generatePageRender() {
         line("@Override");
         line("public void render(HtmlOutput out) {");
         indent++;
         if (page.layoutName() != null) {
-            // Delegate to layout, passing content as lambda
             String layoutField = layoutFieldName(page.layoutName());
             line(layoutField + ".render(out, (slotName, slotOut) -> {");
             indent++;
@@ -215,6 +192,158 @@ public class CodeGenerator {
         } else if (page.body() != null) {
             generateBodyNodes(page.body().children());
         }
+        indent--;
+        line("}");
+    }
+
+    // ========== LAYOUT Generation ==========
+
+    private void generateLayoutClass(String javaSource) {
+        String layoutName = page.layoutName();
+        line("@Component(\"" + escapeJavaString(layoutName) + "Layout\")");
+
+        String[] lines = javaSource.split("\n");
+        boolean classStarted = false;
+
+        for (String srcLine : lines) {
+            String trimmed = srcLine.trim();
+
+            if (trimmed.startsWith("package ") || trimmed.startsWith("import ")) continue;
+            if (trimmed.startsWith("@Layout")) continue;
+
+            if (!classStarted && trimmed.contains("class " + page.className())) {
+                String modifiedLine = trimmed;
+                if (!modifiedLine.contains("implements")) {
+                    modifiedLine = modifiedLine.replace("{", "implements CandiLayout {");
+                } else if (!modifiedLine.contains("CandiLayout")) {
+                    modifiedLine = modifiedLine.replace("implements ", "implements CandiLayout, ");
+                }
+                line(modifiedLine);
+                classStarted = true;
+                indent++;
+                continue;
+            }
+
+            if (classStarted && trimmed.equals("}") && isLastClosingBrace(lines, srcLine)) continue;
+
+            if (classStarted) {
+                line(trimmed);
+            } else {
+                line(srcLine);
+            }
+        }
+
+        // Generate layout render method
+        line("");
+        generateLayoutRender();
+
+        indent--;
+        line("}");
+    }
+
+    private void generateLayoutRender() {
+        line("@Override");
+        line("public void render(HtmlOutput out, SlotProvider slots) {");
+        indent++;
+        if (page.body() != null) {
+            generateBodyNodes(page.body().children());
+        }
+        indent--;
+        line("}");
+    }
+
+    // ========== WIDGET Generation ==========
+
+    private void generateWidgetClass(String javaSource) {
+        String beanName = page.className() + "__Widget";
+        line("@Component(\"" + escapeJavaString(beanName) + "\")");
+        line("@Scope(\"prototype\")");
+
+        String[] lines = javaSource.split("\n");
+        boolean classStarted = false;
+
+        for (String srcLine : lines) {
+            String trimmed = srcLine.trim();
+
+            if (trimmed.startsWith("package ") || trimmed.startsWith("import ")) continue;
+            if (trimmed.startsWith("@Widget")) continue;
+
+            if (!classStarted && trimmed.contains("class " + page.className())) {
+                String modifiedLine = trimmed;
+                if (!modifiedLine.contains("implements")) {
+                    modifiedLine = modifiedLine.replace("{", "implements CandiComponent {");
+                } else if (!modifiedLine.contains("CandiComponent")) {
+                    modifiedLine = modifiedLine.replace("implements ", "implements CandiComponent, ");
+                }
+                line(modifiedLine);
+                classStarted = true;
+                indent++;
+                continue;
+            }
+
+            if (classStarted && trimmed.equals("}") && isLastClosingBrace(lines, srcLine)) continue;
+
+            if (classStarted) {
+                line(trimmed);
+            } else {
+                line(srcLine);
+            }
+        }
+
+        // Generate setParams and render methods
+        line("");
+        generateWidgetSetParams();
+        line("");
+        generateWidgetRender();
+
+        indent--;
+        line("}");
+    }
+
+    private void generateWidgetSetParams() {
+        line("@Override");
+        line("public void setParams(java.util.Map<String, Object> params) {");
+        indent++;
+        // Set each field from params map
+        for (String fieldName : page.fieldNames()) {
+            String type = page.fieldTypes().get(fieldName);
+            if (type != null) {
+                line("if (params.containsKey(\"" + fieldName + "\")) {");
+                indent++;
+                line("this." + fieldName + " = (" + type + ") params.get(\"" + fieldName + "\");");
+                indent--;
+                line("}");
+            }
+        }
+        indent--;
+        line("}");
+    }
+
+    private void generateWidgetRender() {
+        line("@Override");
+        line("public void render(HtmlOutput out) {");
+        indent++;
+        if (page.body() != null) {
+            generateBodyNodes(page.body().children());
+        }
+        indent--;
+        line("}");
+    }
+
+    // ========== Minimal Class (body-only) ==========
+
+    private void generateMinimalClass() {
+        line("@Component");
+        line("@Scope(WebApplicationContext.SCOPE_REQUEST)");
+        line("public class " + className + " implements CandiPage {");
+        indent++;
+        if (hasComponentCalls()) {
+            line("");
+            line("@Autowired");
+            line("private ApplicationContext _applicationContext;");
+        }
+        line("");
+        generatePageRender();
         indent--;
         line("}");
     }
@@ -235,7 +364,7 @@ public class CodeGenerator {
             case IfNode ifNode -> generateIf(ifNode);
             case ForNode forNode -> generateFor(forNode);
             case IncludeNode include -> generateInclude(include);
-            case ComponentCallNode call -> generateComponentCall(call);
+            case ComponentCallNode call -> generateWidgetCall(call);
             case ContentNode content -> generateContent(content);
             default -> throw new IllegalStateException("Unexpected node in body: " + node.getClass());
         }
@@ -283,14 +412,11 @@ public class CodeGenerator {
     }
 
     private void generateInclude(IncludeNode node) {
-        // Include is rendered at compile time — the include file contents are inlined.
-        // For now, emit a comment placeholder. The actual inlining is done by CandiCompiler.
-        // If the include wasn't resolved, emit a comment.
         line("// TODO: include \"" + escapeJavaString(node.fileName()) + "\"");
     }
 
-    private void generateComponentCall(ComponentCallNode node) {
-        String beanName = componentBeanName(node.componentName());
+    private void generateWidgetCall(ComponentCallNode node) {
+        String beanName = widgetBeanName(node.componentName());
         line("{");
         indent++;
         line("CandiComponent _comp = _applicationContext.getBean(\"" + beanName + "\", CandiComponent.class);");
@@ -396,10 +522,10 @@ public class CodeGenerator {
         return layoutName + "Layout";
     }
 
-    private String componentBeanName(String componentName) {
+    private String widgetBeanName(String widgetName) {
         StringBuilder sb = new StringBuilder();
         boolean nextUpper = true;
-        for (char c : componentName.toCharArray()) {
+        for (char c : widgetName.toCharArray()) {
             if (c == '-' || c == '_') {
                 nextUpper = true;
             } else {
@@ -407,14 +533,13 @@ public class CodeGenerator {
                 nextUpper = false;
             }
         }
-        return sb.toString() + "__Component";
+        return sb.toString() + "__Widget";
     }
 
     /**
      * Check if a closing brace is the last one in the source (the class closing brace).
      */
     private boolean isLastClosingBrace(String[] lines, String currentLine) {
-        // Find this line and check if there are no more closing braces after it
         boolean found = false;
         for (int i = lines.length - 1; i >= 0; i--) {
             if (lines[i].trim().equals("}")) {

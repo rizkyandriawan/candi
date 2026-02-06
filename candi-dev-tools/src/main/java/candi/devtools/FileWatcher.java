@@ -59,9 +59,10 @@ public class FileWatcher implements Runnable {
                         continue;
                     }
 
-                    // Only process .page.html, .layout.html, .component.html files
+                    // Only process .jhtml files (and legacy .page.html, .layout.html, .component.html)
                     String fileName = changed.getFileName().toString();
-                    if (!fileName.endsWith(".page.html") &&
+                    if (!fileName.endsWith(".jhtml") &&
+                        !fileName.endsWith(".page.html") &&
                         !fileName.endsWith(".layout.html") &&
                         !fileName.endsWith(".component.html")) {
                         continue;

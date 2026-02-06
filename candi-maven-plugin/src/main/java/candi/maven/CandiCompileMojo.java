@@ -13,15 +13,20 @@ import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
- * Compiles .page.html files to Java source code.
+ * Compiles .jhtml files to Java source code.
  *
- * Scans {@code src/main/candi/} for .page.html files, invokes the Candi compiler,
+ * Scans {@code src/main/candi/} for .jhtml files, invokes the Candi compiler,
  * and writes generated Java sources to {@code target/generated-sources/candi}.
  */
 @Mojo(name = "compile", defaultPhase = LifecyclePhase.GENERATE_SOURCES)
 public class CandiCompileMojo extends AbstractMojo {
+
+    private static final Pattern PUBLIC_CLASS_PATTERN = Pattern.compile(
+            "public\\s+class\\s+(\\w+)");
 
     @Parameter(defaultValue = "${project}", readonly = true, required = true)
     private MavenProject project;
@@ -45,26 +50,31 @@ public class CandiCompileMojo extends AbstractMojo {
             return;
         }
 
-        // Find all .page.html files
-        List<Path> pageFiles = findPageFiles(sourcePath);
-        if (pageFiles.isEmpty()) {
-            getLog().info("No .page.html files found in " + sourcePath);
+        // Find all .jhtml files (and legacy .page.html)
+        List<Path> candiFiles = findCandiFiles(sourcePath);
+        if (candiFiles.isEmpty()) {
+            getLog().info("No .jhtml files found in " + sourcePath);
             return;
         }
 
-        getLog().info("Compiling " + pageFiles.size() + " Candi page(s)...");
+        getLog().info("Compiling " + candiFiles.size() + " Candi file(s)...");
 
         CandiCompiler compiler = new CandiCompiler();
         int compiled = 0;
 
-        for (Path pageFile : pageFiles) {
+        for (Path candiFile : candiFiles) {
             try {
                 // Derive package from subdirectory structure
-                Path relative = sourcePath.relativize(pageFile);
+                Path relative = sourcePath.relativize(candiFile);
                 String filePackage = derivePackage(relative);
 
-                String javaSource = compiler.compileFile(pageFile, filePackage);
-                String className = CandiCompiler.deriveClassName(pageFile.getFileName().toString());
+                String javaSource = compiler.compileFile(candiFile, filePackage);
+
+                // Extract actual class name from generated source
+                String className = extractClassName(javaSource);
+                if (className == null) {
+                    className = CandiCompiler.deriveClassName(candiFile.getFileName().toString());
+                }
 
                 // Write to output directory
                 Path javaFile = outputPath
@@ -77,23 +87,25 @@ public class CandiCompileMojo extends AbstractMojo {
                 getLog().debug("Compiled: " + relative + " -> " + javaFile);
                 compiled++;
             } catch (Exception e) {
-                throw new MojoExecutionException("Failed to compile: " + pageFile, e);
+                throw new MojoExecutionException("Failed to compile: " + candiFile, e);
             }
         }
 
         // Add generated sources to the project
         project.addCompileSourceRoot(outputPath.toString());
 
-        getLog().info("Candi: " + compiled + " page(s) compiled successfully");
+        getLog().info("Candi: " + compiled + " file(s) compiled successfully");
     }
 
-    private List<Path> findPageFiles(Path sourceDir) throws MojoExecutionException {
+    private List<Path> findCandiFiles(Path sourceDir) throws MojoExecutionException {
         List<Path> result = new ArrayList<>();
         try {
             Files.walkFileTree(sourceDir, new SimpleFileVisitor<>() {
                 @Override
                 public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                    if (file.toString().endsWith(".page.html")) {
+                    String name = file.toString();
+                    if (name.endsWith(".jhtml") || name.endsWith(".page.html") ||
+                        name.endsWith(".layout.html") || name.endsWith(".component.html")) {
                         result.add(file);
                     }
                     return FileVisitResult.CONTINUE;
@@ -106,9 +118,20 @@ public class CandiCompileMojo extends AbstractMojo {
     }
 
     /**
+     * Extract the public class name from generated Java source.
+     */
+    private static String extractClassName(String javaSource) {
+        Matcher m = PUBLIC_CLASS_PATTERN.matcher(javaSource);
+        if (m.find()) {
+            return m.group(1);
+        }
+        return null;
+    }
+
+    /**
      * Derive Java package from file path relative to source root.
-     * e.g. "admin/users.page.html" → "pages.admin"
-     * e.g. "index.page.html" → "pages"
+     * e.g. "admin/users.jhtml" → "pages.admin"
+     * e.g. "index.jhtml" → "pages"
      */
     private String derivePackage(Path relativePath) {
         Path parent = relativePath.getParent();

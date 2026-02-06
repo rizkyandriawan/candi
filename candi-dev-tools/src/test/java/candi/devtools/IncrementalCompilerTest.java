@@ -15,7 +15,7 @@ class IncrementalCompilerTest {
 
     @Test
     void compilesSimplePageToBytecode() throws Exception {
-        Path pageFile = tempDir.resolve("hello.page.html");
+        Path pageFile = tempDir.resolve("hello.jhtml");
         Files.writeString(pageFile, """
                 @Page("/hello")
                 public class HelloPage {
@@ -41,7 +41,7 @@ class IncrementalCompilerTest {
 
     @Test
     void compilesPageWithExpressions() throws Exception {
-        Path pageFile = tempDir.resolve("greeting.page.html");
+        Path pageFile = tempDir.resolve("greeting.jhtml");
         Files.writeString(pageFile, """
                 @Page("/greet")
                 public class GreetingPage {
@@ -70,7 +70,7 @@ class IncrementalCompilerTest {
 
     @Test
     void reportsJavaCompilationErrors() throws Exception {
-        Path pageFile = tempDir.resolve("broken.page.html");
+        Path pageFile = tempDir.resolve("broken.jhtml");
         Files.writeString(pageFile, """
                 @Page("/broken")
                 public class BrokenPage {
@@ -94,7 +94,7 @@ class IncrementalCompilerTest {
 
     @Test
     void loadCompiledClassViaPageClassLoader() throws Exception {
-        Path pageFile = tempDir.resolve("test.page.html");
+        Path pageFile = tempDir.resolve("test.jhtml");
         Files.writeString(pageFile, """
                 @Page("/test")
                 public class TestPage {
@@ -132,7 +132,7 @@ class IncrementalCompilerTest {
 
     @Test
     void compiledPageCanBeInstantiated() throws Exception {
-        Path pageFile = tempDir.resolve("simple.page.html");
+        Path pageFile = tempDir.resolve("simple.jhtml");
         Files.writeString(pageFile, """
                 @Page("/simple")
                 public class SimplePage {

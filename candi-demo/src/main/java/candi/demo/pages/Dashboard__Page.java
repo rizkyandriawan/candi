@@ -42,7 +42,7 @@ public class Dashboard__Page implements CandiPage {
                 slotOut.append("<h1>Dashboard</h1>\n");
                 // Component call: {{ component "alert" type="success" message="Welcome back!" }}
                 {
-                    CandiComponent _comp = applicationContext.getBean("Alert__Component", CandiComponent.class);
+                    CandiComponent _comp = applicationContext.getBean("Alert__Widget", CandiComponent.class);
                     Map<String, Object> _params = new HashMap<>();
                     _params.put("type", "success");
                     _params.put("message", "Welcome back!");
@@ -52,7 +52,7 @@ public class Dashboard__Page implements CandiPage {
                 slotOut.append("\n");
                 // Component call: {{ component "alert" type="warning" message="3 items need review." }}
                 {
-                    CandiComponent _comp = applicationContext.getBean("Alert__Component", CandiComponent.class);
+                    CandiComponent _comp = applicationContext.getBean("Alert__Widget", CandiComponent.class);
                     Map<String, Object> _params = new HashMap<>();
                     _params.put("type", "warning");
                     _params.put("message", "3 items need review.");

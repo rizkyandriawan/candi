@@ -6,11 +6,11 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Marks a Candi layout class.
- * Used in .jhtml files to declare a layout template with a {{ content }} slot.
- * Pages reference layouts via @Page(layout="name").
+ * Marks a Candi widget class (reusable UI component).
+ * Used in .jhtml files: the Java class section uses @Widget.
+ * Widgets are prototype-scoped — each {{ widget "name" }} call gets a fresh instance.
  */
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
-public @interface Layout {
+public @interface Widget {
 }

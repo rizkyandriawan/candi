@@ -31,7 +31,7 @@ class TypeResolverTest {
             classInfo = analyzer.analyze(javaSource);
         } else {
             classInfo = new JavaAnalyzer.ClassInfo(
-                    "Test__Page", null, null,
+                    "Test__Page", JavaAnalyzer.FileType.PAGE, null, null,
                     Set.of(), Map.of(),
                     Set.of(), Set.of());
         }
@@ -43,6 +43,7 @@ class TypeResolverTest {
         return new PageNode(
                 javaSource,
                 resolvedClassName,
+                classInfo.fileType(),
                 classInfo.pagePath(),
                 classInfo.layoutName(),
                 classInfo.fieldNames(),

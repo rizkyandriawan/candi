@@ -20,7 +20,7 @@ class CandiCompilerTest {
                 </template>
                 """;
 
-        String java = compiler.compile(source, "hello.page.html", "pages", "HelloPage");
+        String java = compiler.compile(source, "hello.jhtml", "pages", "HelloPage");
 
         assertTrue(java.contains("class HelloPage implements CandiPage"));
         assertTrue(java.contains("@CandiRoute(path = \"/hello\""));
@@ -42,7 +42,7 @@ class CandiCompilerTest {
                 </template>
                 """;
 
-        String java = compiler.compile(source, "greet.page.html", "pages", "GreetPage");
+        String java = compiler.compile(source, "greet.jhtml", "pages", "GreetPage");
 
         assertTrue(java.contains("@Autowired"));
         assertTrue(java.contains("private GreetService greet;"));
@@ -72,7 +72,7 @@ class CandiCompilerTest {
                 </template>
                 """;
 
-        String java = compiler.compile(source, "posts.page.html", "pages", "PostsPage");
+        String java = compiler.compile(source, "posts.jhtml", "pages", "PostsPage");
 
         assertTrue(java.contains("private List<Post> allPosts;"));
         assertTrue(java.contains("public void init()"));
@@ -104,7 +104,7 @@ class CandiCompilerTest {
                 </template>
                 """;
 
-        String java = compiler.compile(source, "submit.page.html", "pages", "SubmitPage");
+        String java = compiler.compile(source, "submit.jhtml", "pages", "SubmitPage");
 
         assertTrue(java.contains("@CandiRoute(path = \"/submit\""));
         assertTrue(java.contains("methods = {\"GET\", \"POST\"}"));
@@ -134,7 +134,7 @@ class CandiCompilerTest {
                 </template>
                 """;
 
-        String java = compiler.compile(source, "item.page.html", "pages", "ItemPage");
+        String java = compiler.compile(source, "item.jhtml", "pages", "ItemPage");
 
         assertTrue(java.contains("methods = {\"GET\", \"POST\", \"DELETE\"}"));
         assertTrue(java.contains("@Post"));
@@ -145,7 +145,7 @@ class CandiCompilerTest {
     void testIfElseBlock() {
         String source = "{{ if visible }}<p>yes</p>{{ else }}<p>no</p>{{ end }}";
 
-        String java = compiler.compile(source, "test.page.html", "pages", "Test__Page");
+        String java = compiler.compile(source, "test.jhtml", "pages", "Test__Page");
 
         assertTrue(java.contains("if ("));
         assertTrue(java.contains("out.append(\"<p>yes</p>\");"));
@@ -157,7 +157,7 @@ class CandiCompilerTest {
     void testElseIfBlock() {
         String source = "{{ if a }}1{{ else if b }}2{{ else }}3{{ end }}";
 
-        String java = compiler.compile(source, "test.page.html", "pages", "Test__Page");
+        String java = compiler.compile(source, "test.jhtml", "pages", "Test__Page");
 
         assertTrue(java.contains("} else {"));
     }
@@ -166,7 +166,7 @@ class CandiCompilerTest {
     void testForLoop() {
         String source = "<ul>{{ for item in items }}<li>{{ item }}</li>{{ end }}</ul>";
 
-        String java = compiler.compile(source, "test.page.html", "pages", "Test__Page");
+        String java = compiler.compile(source, "test.jhtml", "pages", "Test__Page");
 
         assertTrue(java.contains("for (var item : items)"));
         assertTrue(java.contains("out.appendEscaped(String.valueOf(item));"));
@@ -184,7 +184,7 @@ class CandiCompilerTest {
                 </template>
                 """;
 
-        String java = compiler.compile(source, "test.page.html", "pages", "TestPage");
+        String java = compiler.compile(source, "test.jhtml", "pages", "TestPage");
 
         assertTrue(java.contains("this.post.getTitle()"));
     }
@@ -201,7 +201,7 @@ class CandiCompilerTest {
                 </template>
                 """;
 
-        String java = compiler.compile(source, "test.page.html", "pages", "TestPage");
+        String java = compiler.compile(source, "test.jhtml", "pages", "TestPage");
 
         assertTrue(java.contains("this.post == null ? null : this.post.getTitle()"));
     }
@@ -218,7 +218,7 @@ class CandiCompilerTest {
                 </template>
                 """;
 
-        String java = compiler.compile(source, "test.page.html", "pages", "TestPage");
+        String java = compiler.compile(source, "test.jhtml", "pages", "TestPage");
 
         assertTrue(java.contains("out.append(String.valueOf("));
     }
@@ -227,23 +227,28 @@ class CandiCompilerTest {
     void testEqualityUsesObjectsEquals() {
         String source = "{{ if status == \"active\" }}<span>active</span>{{ end }}";
 
-        String java = compiler.compile(source, "test.page.html", "pages", "Test__Page");
+        String java = compiler.compile(source, "test.jhtml", "pages", "Test__Page");
 
         assertTrue(java.contains("Objects.equals("));
     }
 
     @Test
     void testDeriveClassName() {
+        // Legacy .page.html support
         assertEquals("Index__Page", CandiCompiler.deriveClassName("index.page.html"));
         assertEquals("PostEdit__Page", CandiCompiler.deriveClassName("post-edit.page.html"));
-        assertEquals("UserProfile__Page", CandiCompiler.deriveClassName("user-profile.page.html"));
-        assertEquals("Dashboard__Page", CandiCompiler.deriveClassName("dashboard.page.html"));
+
+        // New .jhtml extension
+        assertEquals("Index__Page", CandiCompiler.deriveClassName("index.jhtml"));
+        assertEquals("PostEdit__Page", CandiCompiler.deriveClassName("post-edit.jhtml"));
+        assertEquals("UserProfile__Page", CandiCompiler.deriveClassName("user-profile.jhtml"));
+        assertEquals("Dashboard__Page", CandiCompiler.deriveClassName("dashboard.jhtml"));
     }
 
     @Test
     void testFullPage() {
         String source = """
-                @Page("/post/{id}/edit")
+                @Page(value = "/post/{id}/edit", layout = "base")
                 public class PostEditPage {
 
                     @Autowired
@@ -295,7 +300,7 @@ class CandiCompilerTest {
                 </template>
                 """;
 
-        String java = compiler.compile(source, "post-edit.page.html", "pages", "PostEditPage");
+        String java = compiler.compile(source, "post-edit.jhtml", "pages", "PostEditPage");
 
         assertTrue(java.contains("class PostEditPage implements CandiPage"));
         assertTrue(java.contains("@CandiRoute(path = \"/post/{id}/edit\""));
@@ -308,6 +313,9 @@ class CandiCompilerTest {
         assertTrue(java.contains("post.getTitle()"));
         assertTrue(java.contains("post.getPublished()"));
         assertTrue(java.contains("post.getContent()"));
+        // Layout injection
+        assertTrue(java.contains("private CandiLayout baseLayout;"));
+        assertTrue(java.contains("baseLayout.render(out,"));
 
         System.out.println("=== Generated Java ===");
         System.out.println(java);
@@ -317,7 +325,7 @@ class CandiCompilerTest {
     void testBooleanExpressionInIf() {
         String source = "{{ if a && b }}<p>both</p>{{ end }}";
 
-        String java = compiler.compile(source, "test.page.html", "pages", "Test__Page");
+        String java = compiler.compile(source, "test.jhtml", "pages", "Test__Page");
 
         assertTrue(java.contains("&&"));
     }
@@ -333,7 +341,7 @@ class CandiCompilerTest {
                 {{ end }}
                 """;
 
-        String java = compiler.compile(source, "test.page.html", "pages", "Test__Page");
+        String java = compiler.compile(source, "test.jhtml", "pages", "Test__Page");
 
         assertTrue(java.contains("for (var group : groups)"));
         assertTrue(java.contains("for (var item : group.getItems())"));
@@ -349,7 +357,7 @@ class CandiCompilerTest {
                 </template>
                 """;
 
-        String java = compiler.compile(source, "test.page.html", "pages", "Test__Page");
+        String java = compiler.compile(source, "test.jhtml", "pages", "Test__Page");
 
         assertTrue(java.contains("include \"header\""));
         assertTrue(java.contains("include \"footer\""));
@@ -358,6 +366,7 @@ class CandiCompilerTest {
     @Test
     void testContentPlaceholder() {
         String source = """
+                @Layout
                 public class BaseLayout {
                 }
 
@@ -370,16 +379,17 @@ class CandiCompilerTest {
                 </template>
                 """;
 
-        String java = compiler.compile(source, "base.layout.html", "layouts", "BaseLayout");
+        String java = compiler.compile(source, "base.jhtml", "layouts", "BaseLayout");
 
+        assertTrue(java.contains("implements CandiLayout"));
+        assertTrue(java.contains("@Component(\"baseLayout\")"));
         assertTrue(java.contains("slots.renderSlot(\"content\", out);"));
     }
 
     @Test
-    void testLayoutAnnotation() {
+    void testLayoutAnnotationOnPage() {
         String source = """
-                @Page("/about")
-                @Layout("base")
+                @Page(value = "/about", layout = "base")
                 public class AboutPage {
                 }
 
@@ -388,35 +398,107 @@ class CandiCompilerTest {
                 </template>
                 """;
 
-        String java = compiler.compile(source, "about.page.html", "pages", "AboutPage");
+        String java = compiler.compile(source, "about.jhtml", "pages", "AboutPage");
 
         assertTrue(java.contains("private CandiLayout baseLayout;"));
         assertTrue(java.contains("baseLayout.render(out,"));
     }
 
     @Test
-    void testComponentCall() {
+    void testWidgetCall() {
+        String source = """
+                <template>
+                {{ widget "alert" type="error" message="Oops" }}
+                </template>
+                """;
+
+        String java = compiler.compile(source, "test.jhtml", "pages", "Test__Page");
+
+        assertTrue(java.contains("CandiComponent _comp"));
+        assertTrue(java.contains("Alert__Widget"));
+        assertTrue(java.contains("_params.put(\"type\""));
+        assertTrue(java.contains("_params.put(\"message\""));
+    }
+
+    @Test
+    void testLegacyComponentCallStillWorks() {
         String source = """
                 <template>
                 {{ component "alert" type="error" message="Oops" }}
                 </template>
                 """;
 
-        String java = compiler.compile(source, "test.page.html", "pages", "Test__Page");
+        String java = compiler.compile(source, "test.jhtml", "pages", "Test__Page");
 
         assertTrue(java.contains("CandiComponent _comp"));
-        assertTrue(java.contains("Alert__Component"));
-        assertTrue(java.contains("_params.put(\"type\""));
-        assertTrue(java.contains("_params.put(\"message\""));
+        assertTrue(java.contains("Alert__Widget"));
     }
 
     @Test
     void testBodyOnlyPage() {
         String source = "<h1>Simple</h1>";
 
-        String java = compiler.compile(source, "simple.page.html", "pages", "Simple__Page");
+        String java = compiler.compile(source, "simple.jhtml", "pages", "Simple__Page");
 
         assertTrue(java.contains("class Simple__Page implements CandiPage"));
         assertTrue(java.contains("out.append(\"<h1>Simple</h1>"));
+    }
+
+    @Test
+    void testWidgetGeneration() {
+        String source = """
+                @Widget
+                public class AlertWidget {
+                    private String type;
+                    private String message;
+                }
+
+                <template>
+                <div class="alert alert-{{ type }}">{{ message }}</div>
+                </template>
+                """;
+
+        String java = compiler.compile(source, "alert.jhtml", "widgets", "AlertWidget");
+
+        assertTrue(java.contains("implements CandiComponent"));
+        assertTrue(java.contains("@Component(\"AlertWidget__Widget\")"));
+        assertTrue(java.contains("@Scope(\"prototype\")"));
+        assertTrue(java.contains("public void setParams(java.util.Map<String, Object> params)"));
+        assertTrue(java.contains("this.type = (String) params.get(\"type\")"));
+        assertTrue(java.contains("this.message = (String) params.get(\"message\")"));
+        assertTrue(java.contains("public void render(HtmlOutput out)"));
+
+        System.out.println("=== Generated Widget ===");
+        System.out.println(java);
+    }
+
+    @Test
+    void testLayoutGeneration() {
+        String source = """
+                @Layout
+                public class BaseLayout {
+                }
+
+                <template>
+                <!DOCTYPE html>
+                <html>
+                <head><title>My App</title></head>
+                <body>
+                {{ content }}
+                </body>
+                </html>
+                </template>
+                """;
+
+        String java = compiler.compile(source, "base.jhtml", "layouts", "BaseLayout");
+
+        assertTrue(java.contains("implements CandiLayout"));
+        assertTrue(java.contains("@Component(\"baseLayout\")"));
+        assertFalse(java.contains("@Scope")); // layouts are singleton (default)
+        assertTrue(java.contains("public void render(HtmlOutput out, SlotProvider slots)"));
+        assertTrue(java.contains("slots.renderSlot(\"content\", out)"));
+
+        System.out.println("=== Generated Layout ===");
+        System.out.println(java);
     }
 }
