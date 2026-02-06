@@ -6,7 +6,7 @@
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│                     .page.html                           │
+│                       .jhtml                              │
 │                                                          │
 │   ┌─────────────────────────┐  ┌──────────────────────┐  │
 │   │  Java Class             │  │  <template>          │  │
@@ -37,6 +37,8 @@
 ## The Approach
 
 Candi brings back PHP's fullstack-in-one-file workflow, built on Spring Boot. The top half is a real Java class with fields, methods, and annotations. The bottom half is an HTML template. The compiler reads both, then generates a single Spring bean with a `render()` method.
+
+All Candi files use the `.jhtml` extension. The compiler determines the file type from class annotations — not from the filename.
 
 ```html
 @Page("/posts")
@@ -81,45 +83,60 @@ public class PostsPage {
 
 One file. Route, injection, data loading, form handling, HTML — all in one place. The Java part is real Java with full IDE support. Compiled to bytecode at build time.
 
-## Java Class
+## File Types
 
-The top section is a standard Java class. The compiler preserves it and adds Spring annotations + a `render()` method.
+Every Candi file is a `.jhtml` file. The compiler reads the class-level annotation to determine the type:
 
-| Annotation | Purpose |
-|------------|---------|
-| `@Page("/path/{id}")` | Route binding with path params |
-| `@Layout("name")` | Wrap page in a layout template |
-| `@Autowired` | Spring dependency injection |
-| `@Post` | Handle POST requests |
-| `@Put` | Handle PUT requests |
-| `@Delete` | Handle DELETE requests |
-| `@Patch` | Handle PATCH requests |
+| Annotation | Type | What it does |
+|------------|------|--------------|
+| `@Page("/path")` | Page | Request-scoped bean, handles HTTP requests at the given route |
+| `@Layout` | Layout | Singleton wrapper template with a `{{ content }}` slot |
+| `@Widget` | Widget | Prototype-scoped reusable UI component with parameters |
 
-The `init()` method runs once per request before rendering. Action methods (`@Post`, `@Delete`, etc.) return `ActionResult` for redirects or re-renders.
+No annotation → compile error. One annotation per file. The filename is just a name — the annotation is the truth.
 
-## Template Expressions
+### Pages
 
-The `<template>` section uses Go-style `{{ }}` syntax:
-
-| Syntax | Output |
-|--------|--------|
-| `{{ title }}` | HTML-escaped output |
-| `{{ raw content }}` | Unescaped output |
-| `{{ post.title }}` | Property access (calls `getTitle()`) |
-| `{{ post?.title }}` | Null-safe access |
-| `{{ if cond }}...{{ end }}` | Conditional |
-| `{{ if a }}...{{ else }}...{{ end }}` | If/else |
-| `{{ if a }}...{{ else if b }}...{{ end }}` | Else-if chain |
-| `{{ for item in list }}...{{ end }}` | Loop |
-| `{{ include "header" title="Home" }}` | Include HTML partial |
-| `{{ component "card" title="Hello" }}` | Render component |
-| `{{ content }}` | Layout content placeholder |
-
-## Layouts
-
-A layout is a `.layout.html` file with a Java class and a `{{ content }}` placeholder:
+A page handles an HTTP route. It gets a fresh instance per request (request-scoped), runs `init()` for data loading, and dispatches action methods for form submissions.
 
 ```html
+@Page("/posts/{id}")
+@Layout("base")
+public class PostViewPage {
+
+    @Autowired
+    private PostService posts;
+
+    private Post post;
+
+    public void init() {
+        post = posts.findById(ctx.path("id"));
+    }
+
+    @Delete
+    public ActionResult destroy() {
+        posts.delete(ctx.path("id"));
+        return ActionResult.redirect("/posts");
+    }
+}
+
+<template>
+<article>
+  <h1>{{ post.title }}</h1>
+  <div>{{ raw post.body }}</div>
+</article>
+<form method="POST" action="?_method=DELETE">
+  <button>Delete</button>
+</form>
+</template>
+```
+
+### Layouts
+
+A layout wraps pages. It declares `@Layout` (no parameter) on the class. Pages reference it by name with `@Layout("name")`. The `{{ content }}` placeholder is where the page body goes.
+
+```html
+@Layout
 public class BaseLayout {
 }
 
@@ -136,15 +153,16 @@ public class BaseLayout {
 </template>
 ```
 
-Pages opt into a layout with `@Layout("base")`. The page's template is injected at `{{ content }}`.
+The layout name defaults to the class name minus `Layout` suffix, lowercased. `BaseLayout` → `"base"`. Pages opt in with `@Layout("base")`.
 
-## Components
+### Widgets
 
-Reusable UI elements with parameters:
+A widget is a reusable UI element with parameters. It declares `@Widget` on the class. Parameters are private fields — the caller sets them via key-value pairs.
 
 ```html
-public class AlertComponent {
-    private String type;
+@Widget
+public class AlertWidget {
+    private String type = "info";
     private String message;
 }
 
@@ -153,7 +171,54 @@ public class AlertComponent {
 </template>
 ```
 
-Used in any page: `{{ component "alert" type="error" message="Oops" }}`
+Used in any page or layout: `{{ widget "alert" type="error" message="Oops" }}`
+
+Widgets are prototype-scoped — each `{{ widget }}` call gets a fresh instance with its own parameter values.
+
+## Java Class
+
+The top section is a standard Java class. The compiler preserves it and adds Spring annotations + a `render()` method.
+
+| Annotation | Purpose |
+|------------|---------|
+| `@Page("/path/{id}")` | Route binding with path params |
+| `@Layout("name")` | On a page: wrap in a layout. Alone on a class: declare a layout. |
+| `@Widget` | Declare a reusable component |
+| `@Autowired` | Spring dependency injection |
+| `@Post` | Handle POST requests |
+| `@Put` | Handle PUT requests |
+| `@Delete` | Handle DELETE requests |
+| `@Patch` | Handle PATCH requests |
+
+The `init()` method runs once per request before rendering. Action methods (`@Post`, `@Delete`, etc.) return `ActionResult` for redirects or re-renders.
+
+## Generated Code
+
+The compiler produces different Spring beans based on annotation:
+
+| Source annotation | Generated class | Interface | Spring scope | Bean name |
+|-------------------|----------------|-----------|-------------|-----------|
+| `@Page("/path")` | `PostsPage__Page` | `CandiPage` | `request` | auto (class name) |
+| `@Layout` | `Base__Layout` | `CandiLayout` | `singleton` | `"baseLayout"` |
+| `@Widget` | `Alert__Component` | `CandiComponent` | `prototype` | `"Alert__Component"` |
+
+## Template Expressions
+
+The `<template>` section uses Go-style `{{ }}` syntax:
+
+| Syntax | Output |
+|--------|--------|
+| `{{ title }}` | HTML-escaped output |
+| `{{ raw content }}` | Unescaped output |
+| `{{ post.title }}` | Property access (calls `getTitle()`) |
+| `{{ post?.title }}` | Null-safe access |
+| `{{ if cond }}...{{ end }}` | Conditional |
+| `{{ if a }}...{{ else }}...{{ end }}` | If/else |
+| `{{ if a }}...{{ else if b }}...{{ end }}` | Else-if chain |
+| `{{ for item in list }}...{{ end }}` | Loop |
+| `{{ include "header" title="Home" }}` | Include HTML partial |
+| `{{ widget "card" title="Hello" }}` | Render widget |
+| `{{ content }}` | Layout content placeholder |
 
 ## Quick Start
 
@@ -179,7 +244,7 @@ Used in any page: `{{ component "alert" type="error" message="Oops" }}`
 </plugin>
 ```
 
-Create `src/main/candi/hello.page.html`:
+Create `src/main/candi/hello.jhtml`:
 
 ```html
 @Page("/hello")
@@ -215,6 +280,25 @@ File watcher detects changes → recompiles → hot-swaps class → SSE pushes r
 ## Project Structure
 
 ```
+src/main/candi/
+├── pages/
+│   ├── index.jhtml           @Page("/")
+│   ├── posts.jhtml           @Page("/posts")
+│   └── post-view.jhtml       @Page("/post/{id}")
+├── layouts/
+│   └── base.jhtml            @Layout
+├── widgets/
+│   ├── alert.jhtml           @Widget
+│   └── card.jhtml            @Widget
+└── includes/
+    └── header.html           plain HTML partial
+```
+
+Directory names are convention — `pages/`, `layouts/`, `widgets/` help organize but the compiler doesn't require them. The annotation determines the type.
+
+### Framework modules
+
+```
 candi/
 ├── candi-compiler/             Lexer, parser, code generator (zero Spring deps)
 ├── candi-runtime/              CandiPage interface, handler mapping, request lifecycle
@@ -231,7 +315,8 @@ candi/
 | Compile-time safety | Template errors caught at build, not runtime |
 | Real Java | Fields, methods, annotations — full IDE support in the class section |
 | Spring Boot native | Use any Spring service, repository, component via `@Autowired` |
-| Layouts & components | `@Layout` + `{{ component }}` + `{{ include }}` for reuse |
+| Annotation-based typing | `@Page`, `@Layout`, `@Widget` — one extension, one compiler |
+| Layouts & widgets | `@Layout` + `{{ widget }}` + `{{ include }}` for reuse |
 | Null-safe expressions | `?.` compiles to Java null checks |
 | Hot reload | SSE-based live reload, no server restart |
 | GraalVM compatible | Runtime hints included for native image |
@@ -250,6 +335,7 @@ cd candi-intellij
 
 | Choice | Reason |
 |--------|--------|
+| Single `.jhtml` extension | One file type, annotation determines behavior — no filename conventions to learn |
 | Maven only (no Gradle) | Spring Boot convention, simpler plugin |
 | No JavaScript runtime | Pages render server-side, HTMX for interactivity |
 | Single-file pages | Simplicity over component granularity |
