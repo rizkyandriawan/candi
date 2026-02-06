@@ -42,8 +42,7 @@ public class IncrementalCompiler {
      * @return compilation result with bytecode or errors
      */
     public CompileResult compile(Path pageFile, String packageName, String classpath) {
-        String className = CandiCompiler.deriveClassName(pageFile.getFileName().toString());
-        String fqcn = packageName + "." + className;
+        String fallbackClassName = CandiCompiler.deriveClassName(pageFile.getFileName().toString());
 
         // Stage 1: Compile .page.html → Java source
         String javaSource;
@@ -51,9 +50,14 @@ public class IncrementalCompiler {
             javaSource = candiCompiler.compileFile(pageFile, packageName);
         } catch (Exception e) {
             log.error("Candi compilation failed: {}", pageFile, e);
-            return new CompileResult(className, fqcn, null,
+            String fqcn = packageName + "." + fallbackClassName;
+            return new CompileResult(fallbackClassName, fqcn, null,
                     List.of("Candi compilation error: " + e.getMessage()));
         }
+
+        // Extract actual class name from generated Java (may differ from filename)
+        String className = extractClassName(javaSource, fallbackClassName);
+        String fqcn = packageName + "." + className;
 
         log.debug("Generated Java source for {}", className);
 
@@ -100,6 +104,19 @@ public class IncrementalCompiler {
 
         log.info("Compiled: {} ({} bytes)", fqcn, bytecode.length);
         return new CompileResult(className, fqcn, bytecode, List.of());
+    }
+
+    /**
+     * Extract the public class name from generated Java source.
+     * Looks for "public class ClassName" in the source.
+     */
+    private static String extractClassName(String javaSource, String fallback) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                "public\\s+class\\s+(\\w+)").matcher(javaSource);
+        if (m.find()) {
+            return m.group(1);
+        }
+        return fallback;
     }
 
     /**

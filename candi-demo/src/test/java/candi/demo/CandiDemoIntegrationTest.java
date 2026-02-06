@@ -79,36 +79,6 @@ class CandiDemoIntegrationTest {
                 .andExpect(status().isMethodNotAllowed());
     }
 
-    // ========== Fragment rendering ==========
-
-    @Test
-    @Order(7)
-    void fragmentViaHeaderReturnsPartialHtml() throws Exception {
-        mockMvc.perform(get("/post/1")
-                        .header("HX-Fragment", "post-content"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(containsString("<article>")))
-                .andExpect(content().string(not(containsString("<h1>"))));
-    }
-
-    @Test
-    @Order(8)
-    void fragmentViaQueryParamReturnsPartialHtml() throws Exception {
-        mockMvc.perform(get("/post/1")
-                        .param("_fragment", "post-content"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(containsString("<article>")))
-                .andExpect(content().string(not(containsString("<h1>"))));
-    }
-
-    @Test
-    @Order(9)
-    void unknownFragmentReturns404() throws Exception {
-        mockMvc.perform(get("/post/1")
-                        .header("HX-Fragment", "nonexistent"))
-                .andExpect(status().isNotFound());
-    }
-
     // ========== Unknown route ==========
 
     @Test
@@ -143,7 +113,7 @@ class CandiDemoIntegrationTest {
                 .andExpect(redirectedUrl("/"));
     }
 
-    // ========== Layout rendering (M4) ==========
+    // ========== Layout rendering ==========
 
     @Test
     @Order(30)
@@ -151,20 +121,20 @@ class CandiDemoIntegrationTest {
         mockMvc.perform(get("/about"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("<html>")))
-                .andExpect(content().string(containsString("<title>About Us</title>")))
+                .andExpect(content().string(containsString("<title>Candi Demo</title>")))
                 .andExpect(content().string(containsString("<nav>Candi Demo</nav>")))
                 .andExpect(content().string(containsString("<h1>About Candi</h1>")))
                 .andExpect(content().string(containsString("<footer>Powered by Candi</footer>")));
     }
 
-    // ========== Component rendering (M4) ==========
+    // ========== Component rendering ==========
 
     @Test
     @Order(31)
     void dashboardPageRendersWithLayoutAndComponents() throws Exception {
         mockMvc.perform(get("/dashboard"))
                 .andExpect(status().isOk())
-                .andExpect(content().string(containsString("<title>Dashboard</title>")))
+                .andExpect(content().string(containsString("<title>Candi Demo</title>")))
                 .andExpect(content().string(containsString("<h1>Dashboard</h1>")))
                 .andExpect(content().string(containsString("alert-success")))
                 .andExpect(content().string(containsString("Welcome back!")))

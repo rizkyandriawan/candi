@@ -10,21 +10,30 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerAdapter;
 import org.springframework.web.servlet.ModelAndView;
 
-import java.io.IOException;
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Method;
+import java.util.Map;
 import java.util.Set;
 
 /**
  * Spring HandlerAdapter that orchestrates the Candi page request lifecycle:
  * 1. Get request-scoped CandiPage bean from Spring DI
  * 2. page.init()
- * 3. Check HTTP method → handleAction() for non-GET
- * 4. Render full page or fragment
+ * 3. Check HTTP method → invoke @Post/@Delete/etc annotated method via reflection
+ * 4. Render full page
  */
 @Component
 public class CandiHandlerAdapter implements HandlerAdapter {
 
     private static final Logger log = LoggerFactory.getLogger(CandiHandlerAdapter.class);
     private static final Set<String> RENDER_METHODS = Set.of("GET", "HEAD");
+
+    private static final Map<String, Class<? extends Annotation>> METHOD_ANNOTATIONS = Map.of(
+            "POST", Post.class,
+            "PUT", Put.class,
+            "DELETE", Delete.class,
+            "PATCH", Patch.class
+    );
 
     @Autowired
     private ApplicationContext applicationContext;
@@ -55,12 +64,12 @@ public class CandiHandlerAdapter implements HandlerAdapter {
         // 1. Get request-scoped page bean
         CandiPage page = applicationContext.getBean(beanName, CandiPage.class);
 
-        // 2. Run @init
+        // 2. Run init()
         page.init();
 
-        // 3. Handle action for non-GET/HEAD methods
+        // 3. Handle action for non-GET/HEAD methods via reflection
         if (!RENDER_METHODS.contains(method)) {
-            ActionResult result = page.handleAction(method);
+            ActionResult result = invokeAction(page, method);
 
             switch (result) {
                 case ActionResult.Redirect redirect -> {
@@ -77,23 +86,11 @@ public class CandiHandlerAdapter implements HandlerAdapter {
             }
         }
 
-        // 4. Check for fragment request
-        String fragmentName = getFragmentName(request);
-
-        // 5. Render
+        // 4. Render
         HtmlOutput out = new HtmlOutput();
-        if (fragmentName != null) {
-            try {
-                page.renderFragment(fragmentName, out);
-            } catch (FragmentNotFoundException e) {
-                response.sendError(HttpServletResponse.SC_NOT_FOUND, "Fragment not found: " + fragmentName);
-                return null;
-            }
-        } else {
-            page.render(out);
-        }
+        page.render(out);
 
-        // 6. Write response
+        // 5. Write response
         response.setContentType("text/html;charset=UTF-8");
         response.getWriter().write(out.toHtml());
 
@@ -106,19 +103,32 @@ public class CandiHandlerAdapter implements HandlerAdapter {
     }
 
     /**
-     * Detect fragment request from HX-Fragment header or _fragment query parameter.
+     * Find and invoke the action method annotated with the matching HTTP method annotation.
+     * E.g. for POST, looks for a method annotated with @Post.
      */
-    private String getFragmentName(HttpServletRequest request) {
-        // HTMX fragment header
-        String header = request.getHeader("HX-Fragment");
-        if (header != null && !header.isBlank()) {
-            return header.trim();
+    private ActionResult invokeAction(CandiPage page, String httpMethod) {
+        Class<? extends Annotation> annotationClass = METHOD_ANNOTATIONS.get(httpMethod);
+        if (annotationClass == null) {
+            return ActionResult.methodNotAllowed();
         }
-        // Fallback: query parameter
-        String param = request.getParameter("_fragment");
-        if (param != null && !param.isBlank()) {
-            return param.trim();
+
+        for (Method m : page.getClass().getDeclaredMethods()) {
+            if (m.isAnnotationPresent(annotationClass)) {
+                try {
+                    m.setAccessible(true);
+                    Object result = m.invoke(page);
+                    if (result instanceof ActionResult actionResult) {
+                        return actionResult;
+                    }
+                    // If the method returns void or non-ActionResult, fall through to render
+                    return ActionResult.render();
+                } catch (Exception e) {
+                    log.error("Error invoking action method {} on {}", m.getName(), page.getClass().getName(), e);
+                    throw new RuntimeException("Action method invocation failed", e);
+                }
+            }
         }
-        return null;
+
+        return ActionResult.methodNotAllowed();
     }
 }

@@ -33,10 +33,13 @@ public class CandiGraalVmHints implements RuntimeHintsRegistrar {
         registerClass(hints, PageRegistry.class);
         registerClass(hints, CandiHandlerMapping.class);
         registerClass(hints, CandiHandlerAdapter.class);
-        registerClass(hints, FragmentNotFoundException.class);
         registerClass(hints, CandiLayout.class);
         registerClass(hints, SlotProvider.class);
         registerClass(hints, CandiComponent.class);
+        registerClass(hints, Post.class);
+        registerClass(hints, Put.class);
+        registerClass(hints, Delete.class);
+        registerClass(hints, Patch.class);
     }
 
     private void registerClass(RuntimeHints hints, Class<?> clazz) {

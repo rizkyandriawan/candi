@@ -6,31 +6,36 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.context.WebApplicationContext;
 import candi.runtime.*;
 import candi.demo.service.PostService;
-import java.util.Objects;
 
 /**
- * Hand-compiled page simulating compiler output for:
+ * Hand-compiled page simulating v2 compiler output for:
  *
- * @page "/post/{id}"
- * @inject PostService posts
- * @inject RequestContext ctx
+ * @Page("/post/{id}")
+ * public class PostViewPage {
  *
- * @init {
- *   post = posts.getById(ctx.path("id"));
+ *     @Autowired
+ *     private PostService posts;
+ *
+ *     @Autowired
+ *     private RequestContext ctx;
+ *
+ *     private PostService.Post post;
+ *
+ *     public void init() {
+ *         post = posts.getById(ctx.path("id"));
+ *     }
  * }
  *
- * @fragment "post-content" {
- *   <article>{{ raw post.content }}</article>
- * }
- *
+ * <template>
  * {{ if post }}
  *   <h1>{{ post.title }}</h1>
  *   {{ if post.published }}
- *     {{ fragment "post-content" }}
+ *     <article>{{ raw post.content }}</article>
  *   {{ end }}
  * {{ else }}
  *   <h1>Not Found</h1>
  * {{ end }}
+ * </template>
  */
 @Component
 @Scope(WebApplicationContext.SCOPE_REQUEST)
@@ -43,7 +48,7 @@ public class PostView__Page implements CandiPage {
     @Autowired
     private RequestContext ctx;
 
-    private Object post;
+    private PostService.Post post;
 
     @Override
     public void init() {
@@ -51,38 +56,18 @@ public class PostView__Page implements CandiPage {
     }
 
     @Override
-    public ActionResult handleAction(String method) {
-        return ActionResult.methodNotAllowed();
-    }
-
-    @Override
     public void render(HtmlOutput out) {
-        if (this.post != null && !Boolean.FALSE.equals(this.post)) {
-            PostService.Post p = (PostService.Post) this.post;
+        if (this.post != null) {
             out.append("<h1>");
-            out.appendEscaped(String.valueOf(p.title()));
+            out.appendEscaped(String.valueOf(this.post.title()));
             out.append("</h1>\n");
-            if (p.published()) {
-                renderFragment_postContent(out);
+            if (this.post.published()) {
+                out.append("<article>");
+                out.append(String.valueOf(this.post.content()));
+                out.append("</article>");
             }
         } else {
             out.append("<h1>Not Found</h1>\n");
         }
-    }
-
-    @Override
-    public void renderFragment(String name, HtmlOutput out) {
-        if ("post-content".equals(name)) {
-            renderFragment_postContent(out);
-            return;
-        }
-        throw new FragmentNotFoundException(name);
-    }
-
-    private void renderFragment_postContent(HtmlOutput out) {
-        PostService.Post p = (PostService.Post) this.post;
-        out.append("<article>");
-        out.append(String.valueOf(p.content()));
-        out.append("</article>");
     }
 }

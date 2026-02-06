@@ -6,34 +6,45 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.context.WebApplicationContext;
 import candi.runtime.*;
 import candi.demo.service.PostService;
-import java.util.Objects;
 
 /**
- * Hand-compiled page simulating compiler output for:
+ * Hand-compiled page simulating v2 compiler output for:
  *
- * @page "/post/{id}/edit"
- * @inject PostService posts
- * @inject RequestContext ctx
+ * @Page("/post/{id}/edit")
+ * public class PostEditPage {
  *
- * @init {
- *   post = posts.getById(ctx.path("id"));
+ *     @Autowired
+ *     private PostService posts;
+ *
+ *     @Autowired
+ *     private RequestContext ctx;
+ *
+ *     private PostService.Post post;
+ *
+ *     public void init() {
+ *         post = posts.getById(ctx.path("id"));
+ *     }
+ *
+ *     @Post
+ *     public ActionResult update() {
+ *         posts.update(ctx.path("id"), ctx.form("title"));
+ *         return ActionResult.redirect("/post/" + ctx.path("id"));
+ *     }
+ *
+ *     @Delete
+ *     public ActionResult remove() {
+ *         posts.delete(ctx.path("id"));
+ *         return ActionResult.redirect("/");
+ *     }
  * }
  *
- * @action POST {
- *   posts.update(ctx.path("id"), ctx.form("title"));
- *   redirect("/post/" + ctx.path("id"));
- * }
- *
- * @action DELETE {
- *   posts.delete(ctx.path("id"));
- *   redirect("/");
- * }
- *
+ * <template>
  * <h1>Edit Post</h1>
  * <form method="POST">
  *   <input name="title" value="{{ post.title }}">
  *   <button>Save</button>
  * </form>
+ * </template>
  */
 @Component
 @Scope(WebApplicationContext.SCOPE_REQUEST)
@@ -46,33 +57,31 @@ public class PostEdit__Page implements CandiPage {
     @Autowired
     private RequestContext ctx;
 
-    private Object post;
+    private PostService.Post post;
 
     @Override
     public void init() {
         this.post = posts.getById(ctx.path("id"));
     }
 
-    @Override
-    public ActionResult handleAction(String method) {
-        if ("POST".equals(method)) {
-            this.posts.update(ctx.path("id"), ctx.form("title"));
-            return ActionResult.redirect("/post/" + ctx.path("id"));
-        }
-        if ("DELETE".equals(method)) {
-            this.posts.delete(ctx.path("id"));
-            return ActionResult.redirect("/");
-        }
-        return ActionResult.methodNotAllowed();
+    @Post
+    public ActionResult update() {
+        this.posts.update(ctx.path("id"), ctx.form("title"));
+        return ActionResult.redirect("/post/" + ctx.path("id"));
+    }
+
+    @Delete
+    public ActionResult remove() {
+        this.posts.delete(ctx.path("id"));
+        return ActionResult.redirect("/");
     }
 
     @Override
     public void render(HtmlOutput out) {
-        PostService.Post p = (PostService.Post) this.post;
         out.append("<h1>Edit Post</h1>\n");
         out.append("<form method=\"POST\">\n");
         out.append("  <input name=\"title\" value=\"");
-        out.appendEscaped(String.valueOf(p.title()));
+        out.appendEscaped(String.valueOf(this.post.title()));
         out.append("\">\n");
         out.append("  <button>Save</button>\n");
         out.append("</form>\n");

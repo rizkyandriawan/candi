@@ -9,93 +9,42 @@ import static org.junit.jupiter.api.Assertions.*;
 class LexerTest {
 
     @Test
-    void testSimplePageDirective() {
-        String source = """
-                @page "/hello"
+    void testBodyOnlyTemplate() {
+        String source = "<h1>Hello</h1>";
+        Lexer lexer = new Lexer(source, "test.page.html");
+        List<Token> tokens = lexer.tokenize();
 
+        assertEquals("", lexer.getJavaSource());
+        assertEquals(TokenType.HTML, tokens.get(0).type());
+        assertTrue(tokens.get(0).value().contains("<h1>Hello</h1>"));
+    }
+
+    @Test
+    void testJavaClassAndTemplate() {
+        String source = """
+                @Page("/hello")
+                public class HelloPage {
+                }
+
+                <template>
                 <h1>Hello</h1>
+                </template>
                 """;
         Lexer lexer = new Lexer(source, "test.page.html");
         List<Token> tokens = lexer.tokenize();
 
-        assertEquals(TokenType.PAGE, tokens.get(0).type());
-        assertEquals(TokenType.STRING_LITERAL, tokens.get(1).type());
-        assertEquals("/hello", tokens.get(1).value());
-        assertEquals(TokenType.HTML, tokens.get(2).type());
-        assertTrue(tokens.get(2).value().contains("<h1>Hello</h1>"));
-    }
-
-    @Test
-    void testInjectDirective() {
-        String source = """
-                @inject PostService posts
-
-                <div></div>
-                """;
-        Lexer lexer = new Lexer(source, "test.page.html");
-        List<Token> tokens = lexer.tokenize();
-
-        assertEquals(TokenType.INJECT, tokens.get(0).type());
-        assertEquals(TokenType.IDENTIFIER, tokens.get(1).type());
-        assertEquals("PostService", tokens.get(1).value());
-        assertEquals(TokenType.IDENTIFIER, tokens.get(2).type());
-        assertEquals("posts", tokens.get(2).value());
-    }
-
-    @Test
-    void testGenericTypeInject() {
-        String source = """
-                @inject List<Post> posts
-
-                <div></div>
-                """;
-        Lexer lexer = new Lexer(source, "test.page.html");
-        List<Token> tokens = lexer.tokenize();
-
-        assertEquals(TokenType.IDENTIFIER, tokens.get(1).type());
-        assertEquals("List<Post>", tokens.get(1).value());
-    }
-
-    @Test
-    void testInitBlock() {
-        String source = """
-                @init {
-                  title = "Hello World";
-                }
-
-                <div></div>
-                """;
-        Lexer lexer = new Lexer(source, "test.page.html");
-        List<Token> tokens = lexer.tokenize();
-
-        assertEquals(TokenType.INIT, tokens.get(0).type());
-        assertEquals(TokenType.CODE_BLOCK, tokens.get(1).type());
-        assertTrue(tokens.get(1).value().contains("title = \"Hello World\";"));
-    }
-
-    @Test
-    void testActionBlock() {
-        String source = """
-                @action POST {
-                  posts.save(ctx.form("title"));
-                  redirect("/posts");
-                }
-
-                <div></div>
-                """;
-        Lexer lexer = new Lexer(source, "test.page.html");
-        List<Token> tokens = lexer.tokenize();
-
-        assertEquals(TokenType.ACTION, tokens.get(0).type());
-        assertEquals(TokenType.HTTP_METHOD, tokens.get(1).type());
-        assertEquals("POST", tokens.get(1).value());
-        assertEquals(TokenType.CODE_BLOCK, tokens.get(2).type());
+        assertTrue(lexer.getJavaSource().contains("@Page(\"/hello\")"));
+        assertTrue(lexer.getJavaSource().contains("class HelloPage"));
+        assertEquals(TokenType.HTML, tokens.get(0).type());
+        assertTrue(tokens.get(0).value().contains("<h1>Hello</h1>"));
     }
 
     @Test
     void testExpressionInBody() {
         String source = """
+                <template>
                 <h1>{{ title }}</h1>
+                </template>
                 """;
         Lexer lexer = new Lexer(source, "test.page.html");
         List<Token> tokens = lexer.tokenize();
@@ -111,9 +60,7 @@ class LexerTest {
 
     @Test
     void testIfExpression() {
-        String source = """
-                {{ if visible }}<p>yes</p>{{ end }}
-                """;
+        String source = "{{ if visible }}<p>yes</p>{{ end }}";
         Lexer lexer = new Lexer(source, "test.page.html");
         List<Token> tokens = lexer.tokenize();
 
@@ -130,9 +77,7 @@ class LexerTest {
 
     @Test
     void testForExpression() {
-        String source = """
-                {{ for item in items }}<li>{{ item.name }}</li>{{ end }}
-                """;
+        String source = "{{ for item in items }}<li>{{ item.name }}</li>{{ end }}";
         Lexer lexer = new Lexer(source, "test.page.html");
         List<Token> tokens = lexer.tokenize();
 
@@ -148,9 +93,7 @@ class LexerTest {
 
     @Test
     void testPropertyAccessExpression() {
-        String source = """
-                {{ post.title }}
-                """;
+        String source = "{{ post.title }}";
         Lexer lexer = new Lexer(source, "test.page.html");
         List<Token> tokens = lexer.tokenize();
 
@@ -165,9 +108,7 @@ class LexerTest {
 
     @Test
     void testNullSafeAccess() {
-        String source = """
-                {{ post?.title }}
-                """;
+        String source = "{{ post?.title }}";
         Lexer lexer = new Lexer(source, "test.page.html");
         List<Token> tokens = lexer.tokenize();
 
@@ -178,9 +119,7 @@ class LexerTest {
 
     @Test
     void testBooleanOperators() {
-        String source = """
-                {{ if a && b || c }}yes{{ end }}
-                """;
+        String source = "{{ if a && b || c }}yes{{ end }}";
         Lexer lexer = new Lexer(source, "test.page.html");
         List<Token> tokens = lexer.tokenize();
 
@@ -194,9 +133,7 @@ class LexerTest {
 
     @Test
     void testComparisonOperators() {
-        String source = """
-                {{ if status == "active" }}yes{{ end }}
-                """;
+        String source = "{{ if status == \"active\" }}yes{{ end }}";
         Lexer lexer = new Lexer(source, "test.page.html");
         List<Token> tokens = lexer.tokenize();
 
@@ -209,9 +146,7 @@ class LexerTest {
 
     @Test
     void testRawExpression() {
-        String source = """
-                {{ raw post.htmlContent }}
-                """;
+        String source = "{{ raw post.htmlContent }}";
         Lexer lexer = new Lexer(source, "test.page.html");
         List<Token> tokens = lexer.tokenize();
 
@@ -222,56 +157,59 @@ class LexerTest {
     }
 
     @Test
-    void testFragmentDirective() {
-        String source = """
-                @fragment "post-content" {
-                  <article>{{ post.content }}</article>
-                }
-
-                <div></div>
-                """;
-        Lexer lexer = new Lexer(source, "test.page.html");
-        List<Token> tokens = lexer.tokenize();
-
-        assertEquals(TokenType.FRAGMENT_DEF, tokens.get(0).type());
-        assertEquals(TokenType.STRING_LITERAL, tokens.get(1).type());
-        assertEquals("post-content", tokens.get(1).value());
-        assertEquals(TokenType.CODE_BLOCK, tokens.get(2).type());
-        assertTrue(tokens.get(2).value().contains("<article>"));
-        assertTrue(tokens.get(2).value().contains("{{ post.content }}"));
-    }
-
-    @Test
-    void testFragmentCall() {
-        String source = """
-                {{ fragment "post-content" }}
-                """;
+    void testIncludeExpression() {
+        String source = "{{ include \"header\" title=\"Home\" }}";
         Lexer lexer = new Lexer(source, "test.page.html");
         List<Token> tokens = lexer.tokenize();
 
         assertEquals(TokenType.EXPR_START, tokens.get(0).type());
-        assertEquals(TokenType.KEYWORD_FRAGMENT, tokens.get(1).type());
+        assertEquals(TokenType.KEYWORD_INCLUDE, tokens.get(1).type());
         assertEquals(TokenType.STRING_LITERAL, tokens.get(2).type());
-        assertEquals("post-content", tokens.get(2).value());
+        assertEquals("header", tokens.get(2).value());
+        assertEquals(TokenType.IDENTIFIER, tokens.get(3).type());
+        assertEquals("title", tokens.get(3).value());
+        assertEquals(TokenType.EQUALS_SIGN, tokens.get(4).type());
+        assertEquals(TokenType.STRING_LITERAL, tokens.get(5).type());
+        assertEquals("Home", tokens.get(5).value());
+    }
+
+    @Test
+    void testComponentExpression() {
+        String source = "{{ component \"alert\" type=\"error\" message=\"Oops\" }}";
+        Lexer lexer = new Lexer(source, "test.page.html");
+        List<Token> tokens = lexer.tokenize();
+
+        assertEquals(TokenType.EXPR_START, tokens.get(0).type());
+        assertEquals(TokenType.KEYWORD_COMPONENT, tokens.get(1).type());
+        assertEquals(TokenType.STRING_LITERAL, tokens.get(2).type());
+        assertEquals("alert", tokens.get(2).value());
+        assertEquals(TokenType.IDENTIFIER, tokens.get(3).type());
+        assertEquals("type", tokens.get(3).value());
+    }
+
+    @Test
+    void testContentExpression() {
+        String source = "{{ content }}";
+        Lexer lexer = new Lexer(source, "test.page.html");
+        List<Token> tokens = lexer.tokenize();
+
+        assertEquals(TokenType.EXPR_START, tokens.get(0).type());
+        assertEquals(TokenType.KEYWORD_CONTENT, tokens.get(1).type());
+        assertEquals(TokenType.EXPR_END, tokens.get(2).type());
     }
 
     @Test
     void testElseIfExpression() {
-        String source = """
-                {{ if a }}1{{ else if b }}2{{ else }}3{{ end }}
-                """;
+        String source = "{{ if a }}1{{ else if b }}2{{ else }}3{{ end }}";
         Lexer lexer = new Lexer(source, "test.page.html");
         List<Token> tokens = lexer.tokenize();
 
-        // {{ if a }}
         assertEquals(TokenType.EXPR_START, tokens.get(0).type());
         assertEquals(TokenType.KEYWORD_IF, tokens.get(1).type());
         assertEquals(TokenType.IDENTIFIER, tokens.get(2).type());
         assertEquals("a", tokens.get(2).value());
         assertEquals(TokenType.EXPR_END, tokens.get(3).type());
-        // 1
         assertEquals(TokenType.HTML, tokens.get(4).type());
-        // {{ else if b }}
         assertEquals(TokenType.EXPR_START, tokens.get(5).type());
         assertEquals(TokenType.KEYWORD_ELSE, tokens.get(6).type());
         assertEquals(TokenType.KEYWORD_IF, tokens.get(7).type());
@@ -282,9 +220,7 @@ class LexerTest {
 
     @Test
     void testMethodCallExpression() {
-        String source = """
-                {{ post.getTitle() }}
-                """;
+        String source = "{{ post.getTitle() }}";
         Lexer lexer = new Lexer(source, "test.page.html");
         List<Token> tokens = lexer.tokenize();
 
@@ -298,26 +234,45 @@ class LexerTest {
     }
 
     @Test
-    void testMultipleDirectives() {
+    void testJavaSourceExtraction() {
         String source = """
-                @page "/posts"
-                @inject PostService posts
-                @inject Auth auth
+                @Page("/posts")
+                public class PostsPage {
 
-                @init {
-                  allPosts = posts.findAll();
+                    @Autowired
+                    private PostService posts;
+
+                    private List<Post> allPosts;
+
+                    public void init() {
+                        allPosts = posts.findAll();
+                    }
                 }
 
-                <div>{{ allPosts }}</div>
+                <template>
+                <h1>Posts</h1>
+                </template>
                 """;
+        Lexer lexer = new Lexer(source, "test.page.html");
+        lexer.tokenize();
+
+        String javaSource = lexer.getJavaSource();
+        assertTrue(javaSource.contains("@Page(\"/posts\")"));
+        assertTrue(javaSource.contains("class PostsPage"));
+        assertTrue(javaSource.contains("private PostService posts"));
+        assertTrue(javaSource.contains("public void init()"));
+    }
+
+    @Test
+    void testIncludeSimple() {
+        String source = "{{ include \"footer\" }}";
         Lexer lexer = new Lexer(source, "test.page.html");
         List<Token> tokens = lexer.tokenize();
 
-        assertEquals(TokenType.PAGE, tokens.get(0).type());
-        assertEquals(TokenType.STRING_LITERAL, tokens.get(1).type());
-        assertEquals(TokenType.INJECT, tokens.get(2).type());
-        assertEquals(TokenType.INJECT, tokens.get(5).type());
-        assertEquals(TokenType.INIT, tokens.get(8).type());
-        assertEquals(TokenType.CODE_BLOCK, tokens.get(9).type());
+        assertEquals(TokenType.EXPR_START, tokens.get(0).type());
+        assertEquals(TokenType.KEYWORD_INCLUDE, tokens.get(1).type());
+        assertEquals(TokenType.STRING_LITERAL, tokens.get(2).type());
+        assertEquals("footer", tokens.get(2).value());
+        assertEquals(TokenType.EXPR_END, tokens.get(3).type());
     }
 }

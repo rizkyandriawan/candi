@@ -5,28 +5,36 @@ import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
 import org.springframework.web.context.WebApplicationContext;
 import candi.runtime.CandiPage;
-import candi.runtime.ActionResult;
 import candi.runtime.HtmlOutput;
 import candi.runtime.CandiRoute;
 import candi.demo.service.PostService;
-import java.util.Objects;
+
+import java.util.List;
 
 /**
- * Hand-compiled page simulating compiler output for:
+ * Hand-compiled page simulating v2 compiler output for:
  *
- * @page "/"
- * @inject PostService posts
+ * @Page("/")
+ * public class IndexPage {
  *
- * @init {
- *   allPosts = posts.findAll();
+ *     @Autowired
+ *     private PostService posts;
+ *
+ *     private List<PostService.Post> allPosts;
+ *
+ *     public void init() {
+ *         allPosts = posts.findAll();
+ *     }
  * }
  *
+ * <template>
  * <h1>All Posts</h1>
  * <ul>
  * {{ for post in allPosts }}
  *   <li>{{ post.title }}</li>
  * {{ end }}
  * </ul>
+ * </template>
  */
 @Component
 @Scope(WebApplicationContext.SCOPE_REQUEST)
@@ -36,7 +44,7 @@ public class Index__Page implements CandiPage {
     @Autowired
     private PostService posts;
 
-    private Object allPosts;
+    private List<PostService.Post> allPosts;
 
     @Override
     public void init() {
@@ -44,15 +52,9 @@ public class Index__Page implements CandiPage {
     }
 
     @Override
-    public ActionResult handleAction(String method) {
-        return ActionResult.methodNotAllowed();
-    }
-
-    @Override
-    @SuppressWarnings("unchecked")
     public void render(HtmlOutput out) {
         out.append("<h1>All Posts</h1>\n<ul>\n");
-        for (var post : (java.util.List<PostService.Post>) this.allPosts) {
+        for (var post : this.allPosts) {
             out.append("<li>");
             out.appendEscaped(String.valueOf(post.title()));
             out.append("</li>\n");

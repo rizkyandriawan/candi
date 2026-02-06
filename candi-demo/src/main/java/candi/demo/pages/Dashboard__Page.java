@@ -11,17 +11,18 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Hand-compiled page simulating compiler output for:
+ * Hand-compiled page simulating v2 compiler output for:
  *
- * @page "/dashboard"
- * @layout "base"
- *
- * @slot title { Dashboard }
- * @slot content {
- *   <h1>Dashboard</h1>
- *   {{ component "alert" type="success" message="Welcome back!" }}
- *   {{ component "alert" type="warning" message="3 items need review." }}
+ * @Page("/dashboard")
+ * @Layout("base")
+ * public class DashboardPage {
  * }
+ *
+ * <template>
+ * <h1>Dashboard</h1>
+ * {{ component "alert" type="success" message="Welcome back!" }}
+ * {{ component "alert" type="warning" message="3 items need review." }}
+ * </template>
  */
 @Component
 @Scope(WebApplicationContext.SCOPE_REQUEST)
@@ -35,38 +36,29 @@ public class Dashboard__Page implements CandiPage {
     private ApplicationContext applicationContext;
 
     @Override
-    public ActionResult handleAction(String method) {
-        return ActionResult.methodNotAllowed();
-    }
-
-    @Override
     public void render(HtmlOutput out) {
         baseLayout.render(out, (slotName, slotOut) -> {
-            switch (slotName) {
-                case "title" -> slotOut.append("Dashboard");
-                case "content" -> {
-                    slotOut.append("<h1>Dashboard</h1>\n");
-                    // Component call: {{ component "alert" type="success" message="Welcome back!" }}
-                    {
-                        CandiComponent _comp = applicationContext.getBean("Alert__Component", CandiComponent.class);
-                        Map<String, Object> _params = new HashMap<>();
-                        _params.put("type", "success");
-                        _params.put("message", "Welcome back!");
-                        _comp.setParams(_params);
-                        _comp.render(slotOut);
-                    }
-                    slotOut.append("\n");
-                    // Component call: {{ component "alert" type="warning" message="3 items need review." }}
-                    {
-                        CandiComponent _comp = applicationContext.getBean("Alert__Component", CandiComponent.class);
-                        Map<String, Object> _params = new HashMap<>();
-                        _params.put("type", "warning");
-                        _params.put("message", "3 items need review.");
-                        _comp.setParams(_params);
-                        _comp.render(slotOut);
-                    }
+            if ("content".equals(slotName)) {
+                slotOut.append("<h1>Dashboard</h1>\n");
+                // Component call: {{ component "alert" type="success" message="Welcome back!" }}
+                {
+                    CandiComponent _comp = applicationContext.getBean("Alert__Component", CandiComponent.class);
+                    Map<String, Object> _params = new HashMap<>();
+                    _params.put("type", "success");
+                    _params.put("message", "Welcome back!");
+                    _comp.setParams(_params);
+                    _comp.render(slotOut);
                 }
-                default -> {}
+                slotOut.append("\n");
+                // Component call: {{ component "alert" type="warning" message="3 items need review." }}
+                {
+                    CandiComponent _comp = applicationContext.getBean("Alert__Component", CandiComponent.class);
+                    Map<String, Object> _params = new HashMap<>();
+                    _params.put("type", "warning");
+                    _params.put("message", "3 items need review.");
+                    _comp.setParams(_params);
+                    _comp.render(slotOut);
+                }
             }
         });
     }

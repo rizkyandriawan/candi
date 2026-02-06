@@ -11,28 +11,38 @@ class CandiCompilerTest {
     @Test
     void testSimplePage() {
         String source = """
-                @page "/hello"
+                @Page("/hello")
+                public class HelloPage {
+                }
 
+                <template>
                 <h1>Hello World</h1>
+                </template>
                 """;
 
-        String java = compiler.compile(source, "hello.page.html", "pages", "Hello__Page");
+        String java = compiler.compile(source, "hello.page.html", "pages", "HelloPage");
 
-        assertTrue(java.contains("class Hello__Page implements CandiPage"));
+        assertTrue(java.contains("class HelloPage implements CandiPage"));
         assertTrue(java.contains("@CandiRoute(path = \"/hello\""));
         assertTrue(java.contains("out.append(\"<h1>Hello World</h1>"));
     }
 
     @Test
-    void testPageWithInjectAndExpression() {
+    void testPageWithAutowiredFieldAndExpression() {
         String source = """
-                @page "/greet"
-                @inject GreetService greet
+                @Page("/greet")
+                public class GreetPage {
 
+                    @Autowired
+                    private GreetService greet;
+                }
+
+                <template>
                 <h1>{{ greet.getMessage() }}</h1>
+                </template>
                 """;
 
-        String java = compiler.compile(source, "greet.page.html", "pages", "Greet__Page");
+        String java = compiler.compile(source, "greet.page.html", "pages", "GreetPage");
 
         assertTrue(java.contains("@Autowired"));
         assertTrue(java.contains("private GreetService greet;"));
@@ -42,78 +52,98 @@ class CandiCompilerTest {
     }
 
     @Test
-    void testPageWithInit() {
+    void testPageWithInitMethod() {
         String source = """
-                @page "/posts"
-                @inject PostService posts
+                @Page("/posts")
+                public class PostsPage {
 
-                @init {
-                  allPosts = posts.findAll();
+                    @Autowired
+                    private PostService posts;
+
+                    private List<Post> allPosts;
+
+                    public void init() {
+                        allPosts = posts.findAll();
+                    }
                 }
 
+                <template>
                 <ul>{{ for post in allPosts }}<li>{{ post.title }}</li>{{ end }}</ul>
+                </template>
                 """;
 
-        String java = compiler.compile(source, "posts.page.html", "pages", "Posts__Page");
+        String java = compiler.compile(source, "posts.page.html", "pages", "PostsPage");
 
-        assertTrue(java.contains("private Object allPosts;"));
+        assertTrue(java.contains("private List<Post> allPosts;"));
         assertTrue(java.contains("public void init()"));
-        assertTrue(java.contains("this.allPosts = posts.findAll();"));
         assertTrue(java.contains("for (var post : this.allPosts)"));
         assertTrue(java.contains("out.appendEscaped(String.valueOf(post.getTitle()));"));
     }
 
     @Test
-    void testPageWithAction() {
+    void testPageWithPostAction() {
         String source = """
-                @page "/submit"
-                @inject FormService forms
+                @Page("/submit")
+                public class SubmitPage {
 
-                @action POST {
-                  forms.save(ctx.form("name"));
-                  redirect("/thanks");
+                    @Autowired
+                    private FormService forms;
+
+                    @Autowired
+                    private RequestContext ctx;
+
+                    @Post
+                    public ActionResult create() {
+                        forms.save(ctx.form("name"));
+                        return ActionResult.redirect("/thanks");
+                    }
                 }
 
+                <template>
                 <form method="POST"><button>Submit</button></form>
+                </template>
                 """;
 
-        String java = compiler.compile(source, "submit.page.html", "pages", "Submit__Page");
+        String java = compiler.compile(source, "submit.page.html", "pages", "SubmitPage");
 
-        assertTrue(java.contains("public ActionResult handleAction(String method)"));
-        assertTrue(java.contains("if (\"POST\".equals(method))"));
-        assertTrue(java.contains("return ActionResult.redirect(\"/thanks\");"));
-        assertTrue(java.contains("return ActionResult.methodNotAllowed();"));
+        assertTrue(java.contains("@CandiRoute(path = \"/submit\""));
         assertTrue(java.contains("methods = {\"GET\", \"POST\"}"));
+        assertTrue(java.contains("@Post"));
+        assertTrue(java.contains("public ActionResult create()"));
     }
 
     @Test
     void testPageWithMultipleActions() {
         String source = """
-                @page "/item/{id}"
+                @Page("/item/{id}")
+                public class ItemPage {
 
-                @action POST {
-                  redirect("/item");
+                    @Post
+                    public ActionResult update() {
+                        return ActionResult.redirect("/item");
+                    }
+
+                    @Delete
+                    public ActionResult remove() {
+                        return ActionResult.redirect("/items");
+                    }
                 }
 
-                @action DELETE {
-                  redirect("/items");
-                }
-
+                <template>
                 <div>item</div>
+                </template>
                 """;
 
-        String java = compiler.compile(source, "item.page.html", "pages", "Item__Page");
+        String java = compiler.compile(source, "item.page.html", "pages", "ItemPage");
 
-        assertTrue(java.contains("if (\"POST\".equals(method))"));
-        assertTrue(java.contains("if (\"DELETE\".equals(method))"));
         assertTrue(java.contains("methods = {\"GET\", \"POST\", \"DELETE\"}"));
+        assertTrue(java.contains("@Post"));
+        assertTrue(java.contains("@Delete"));
     }
 
     @Test
     void testIfElseBlock() {
-        String source = """
-                {{ if visible }}<p>yes</p>{{ else }}<p>no</p>{{ end }}
-                """;
+        String source = "{{ if visible }}<p>yes</p>{{ else }}<p>no</p>{{ end }}";
 
         String java = compiler.compile(source, "test.page.html", "pages", "Test__Page");
 
@@ -125,21 +155,16 @@ class CandiCompilerTest {
 
     @Test
     void testElseIfBlock() {
-        String source = """
-                {{ if a }}1{{ else if b }}2{{ else }}3{{ end }}
-                """;
+        String source = "{{ if a }}1{{ else if b }}2{{ else }}3{{ end }}";
 
         String java = compiler.compile(source, "test.page.html", "pages", "Test__Page");
 
-        // Should generate nested if/else
         assertTrue(java.contains("} else {"));
     }
 
     @Test
     void testForLoop() {
-        String source = """
-                <ul>{{ for item in items }}<li>{{ item }}</li>{{ end }}</ul>
-                """;
+        String source = "<ul>{{ for item in items }}<li>{{ item }}</li>{{ end }}</ul>";
 
         String java = compiler.compile(source, "test.page.html", "pages", "Test__Page");
 
@@ -150,16 +175,16 @@ class CandiCompilerTest {
     @Test
     void testPropertyAccess() {
         String source = """
-                @inject PostService posts
-
-                @init {
-                  post = posts.getFirst();
+                public class TestPage {
+                    private Post post;
                 }
 
+                <template>
                 {{ post.title }}
+                </template>
                 """;
 
-        String java = compiler.compile(source, "test.page.html", "pages", "Test__Page");
+        String java = compiler.compile(source, "test.page.html", "pages", "TestPage");
 
         assertTrue(java.contains("this.post.getTitle()"));
     }
@@ -167,16 +192,16 @@ class CandiCompilerTest {
     @Test
     void testNullSafePropertyAccess() {
         String source = """
-                @inject PostService posts
-
-                @init {
-                  post = posts.getFirst();
+                public class TestPage {
+                    private Post post;
                 }
 
+                <template>
                 {{ post?.title }}
+                </template>
                 """;
 
-        String java = compiler.compile(source, "test.page.html", "pages", "Test__Page");
+        String java = compiler.compile(source, "test.page.html", "pages", "TestPage");
 
         assertTrue(java.contains("this.post == null ? null : this.post.getTitle()"));
     }
@@ -184,54 +209,27 @@ class CandiCompilerTest {
     @Test
     void testRawExpression() {
         String source = """
-                @inject PostService posts
-
-                @init {
-                  post = posts.getFirst();
+                public class TestPage {
+                    private Post post;
                 }
 
+                <template>
                 {{ raw post.htmlContent }}
+                </template>
                 """;
 
-        String java = compiler.compile(source, "test.page.html", "pages", "Test__Page");
+        String java = compiler.compile(source, "test.page.html", "pages", "TestPage");
 
         assertTrue(java.contains("out.append(String.valueOf("));
-        assertFalse(java.contains("out.appendEscaped") && java.contains("htmlContent"));
     }
 
     @Test
     void testEqualityUsesObjectsEquals() {
-        String source = """
-                {{ if status == "active" }}<span>active</span>{{ end }}
-                """;
+        String source = "{{ if status == \"active\" }}<span>active</span>{{ end }}";
 
         String java = compiler.compile(source, "test.page.html", "pages", "Test__Page");
 
         assertTrue(java.contains("Objects.equals("));
-    }
-
-    @Test
-    void testFragmentDefinitionAndCall() {
-        String source = """
-                @inject PostService posts
-
-                @init {
-                  post = posts.getFirst();
-                }
-
-                @fragment "post-content" {
-                  <article>{{ post.content }}</article>
-                }
-
-                <div>{{ fragment "post-content" }}</div>
-                """;
-
-        String java = compiler.compile(source, "test.page.html", "pages", "Test__Page");
-
-        assertTrue(java.contains("private void renderFragment_postContent(HtmlOutput out)"));
-        assertTrue(java.contains("renderFragment_postContent(out);"));
-        assertTrue(java.contains("renderFragment(String name, HtmlOutput out)"));
-        assertTrue(java.contains("FragmentNotFoundException"));
     }
 
     @Test
@@ -245,37 +243,46 @@ class CandiCompilerTest {
     @Test
     void testFullPage() {
         String source = """
-                @page "/post/{id}/edit"
+                @Page("/post/{id}/edit")
+                public class PostEditPage {
 
-                @inject PostService posts
-                @inject RequestContext ctx
-                @inject Auth auth
+                    @Autowired
+                    private PostService posts;
 
-                @init {
-                  post = posts.getById(ctx.path("id"));
-                  canEdit = auth.isAdmin();
+                    @Autowired
+                    private RequestContext ctx;
+
+                    @Autowired
+                    private Auth auth;
+
+                    private Post post;
+                    private boolean canEdit;
+
+                    public void init() {
+                        post = posts.getById(ctx.path("id"));
+                        canEdit = auth.isAdmin();
+                    }
+
+                    @Post
+                    public ActionResult update() {
+                        posts.update(ctx.path("id"), ctx.form("title"));
+                        return ActionResult.redirect("/posts");
+                    }
+
+                    @Delete
+                    public ActionResult remove() {
+                        posts.delete(ctx.path("id"));
+                        return ActionResult.redirect("/posts");
+                    }
                 }
 
-                @action POST {
-                  posts.update(ctx.path("id"), ctx.form("title"));
-                  redirect("/posts");
-                }
-
-                @action DELETE {
-                  posts.delete(ctx.path("id"));
-                  redirect("/posts");
-                }
-
-                @fragment "post-content" {
-                  <article>{{ post.content }}</article>
-                }
-
+                <template>
                 <!DOCTYPE html>
                 <html>
                   <body>
                     <h1>{{ post.title }}</h1>
                     {{ if post.published }}
-                      {{ fragment "post-content" }}
+                      <article>{{ post.content }}</article>
                     {{ end }}
                     {{ if canEdit }}
                       <form method="POST">
@@ -285,39 +292,33 @@ class CandiCompilerTest {
                     {{ end }}
                   </body>
                 </html>
+                </template>
                 """;
 
-        String java = compiler.compile(source, "post-edit.page.html", "pages", "PostEdit__Page");
+        String java = compiler.compile(source, "post-edit.page.html", "pages", "PostEditPage");
 
-        // Verify key parts of the generated code
-        assertTrue(java.contains("class PostEdit__Page implements CandiPage"));
+        assertTrue(java.contains("class PostEditPage implements CandiPage"));
         assertTrue(java.contains("@CandiRoute(path = \"/post/{id}/edit\""));
         assertTrue(java.contains("private PostService posts;"));
         assertTrue(java.contains("private RequestContext ctx;"));
         assertTrue(java.contains("private Auth auth;"));
         assertTrue(java.contains("public void init()"));
-        assertTrue(java.contains("handleAction(String method)"));
-        assertTrue(java.contains("\"POST\".equals(method)"));
-        assertTrue(java.contains("\"DELETE\".equals(method)"));
-        assertTrue(java.contains("renderFragment_postContent"));
+        assertTrue(java.contains("@Post"));
+        assertTrue(java.contains("@Delete"));
         assertTrue(java.contains("post.getTitle()"));
         assertTrue(java.contains("post.getPublished()"));
         assertTrue(java.contains("post.getContent()"));
 
-        // Print for visual inspection
         System.out.println("=== Generated Java ===");
         System.out.println(java);
     }
 
     @Test
     void testBooleanExpressionInIf() {
-        String source = """
-                {{ if a && b }}<p>both</p>{{ end }}
-                """;
+        String source = "{{ if a && b }}<p>both</p>{{ end }}";
 
         String java = compiler.compile(source, "test.page.html", "pages", "Test__Page");
 
-        // Binary op should be used directly, not wrapped in truthiness check
         assertTrue(java.contains("&&"));
     }
 
@@ -339,18 +340,83 @@ class CandiCompilerTest {
     }
 
     @Test
-    void testHeaderOnlyPage() {
+    void testIncludeGeneration() {
         String source = """
-                @page "/api/logout"
-
-                @action POST {
-                  redirect("/login");
-                }
+                <template>
+                {{ include "header" title="Home" }}
+                <p>Content</p>
+                {{ include "footer" }}
+                </template>
                 """;
 
-        String java = compiler.compile(source, "logout.page.html", "pages", "Logout__Page");
+        String java = compiler.compile(source, "test.page.html", "pages", "Test__Page");
 
-        assertTrue(java.contains("class Logout__Page"));
-        assertTrue(java.contains("handleAction"));
+        assertTrue(java.contains("include \"header\""));
+        assertTrue(java.contains("include \"footer\""));
+    }
+
+    @Test
+    void testContentPlaceholder() {
+        String source = """
+                public class BaseLayout {
+                }
+
+                <template>
+                <html>
+                <body>
+                {{ content }}
+                </body>
+                </html>
+                </template>
+                """;
+
+        String java = compiler.compile(source, "base.layout.html", "layouts", "BaseLayout");
+
+        assertTrue(java.contains("slots.renderSlot(\"content\", out);"));
+    }
+
+    @Test
+    void testLayoutAnnotation() {
+        String source = """
+                @Page("/about")
+                @Layout("base")
+                public class AboutPage {
+                }
+
+                <template>
+                <h1>About</h1>
+                </template>
+                """;
+
+        String java = compiler.compile(source, "about.page.html", "pages", "AboutPage");
+
+        assertTrue(java.contains("private CandiLayout baseLayout;"));
+        assertTrue(java.contains("baseLayout.render(out,"));
+    }
+
+    @Test
+    void testComponentCall() {
+        String source = """
+                <template>
+                {{ component "alert" type="error" message="Oops" }}
+                </template>
+                """;
+
+        String java = compiler.compile(source, "test.page.html", "pages", "Test__Page");
+
+        assertTrue(java.contains("CandiComponent _comp"));
+        assertTrue(java.contains("Alert__Component"));
+        assertTrue(java.contains("_params.put(\"type\""));
+        assertTrue(java.contains("_params.put(\"message\""));
+    }
+
+    @Test
+    void testBodyOnlyPage() {
+        String source = "<h1>Simple</h1>";
+
+        String java = compiler.compile(source, "simple.page.html", "pages", "Simple__Page");
+
+        assertTrue(java.contains("class Simple__Page implements CandiPage"));
+        assertTrue(java.contains("out.append(\"<h1>Simple</h1>"));
     }
 }

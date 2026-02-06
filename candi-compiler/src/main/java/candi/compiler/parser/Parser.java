@@ -5,14 +5,14 @@ import candi.compiler.SourceLocation;
 import candi.compiler.ast.*;
 import candi.compiler.expr.Expression;
 import candi.compiler.expr.ExpressionParser;
-import candi.compiler.lexer.Lexer;
 import candi.compiler.lexer.Token;
 import candi.compiler.lexer.TokenType;
 
 import java.util.*;
 
 /**
- * Recursive descent parser that produces the page AST from tokens.
+ * Recursive descent parser for the template section of a .page.html file (v2).
+ * Parses template body only — no header directives.
  */
 public class Parser {
 
@@ -26,79 +26,10 @@ public class Parser {
         this.pos = 0;
     }
 
-    public PageNode parse() {
-        String path = null;
-        List<InjectNode> injects = new ArrayList<>();
-        InitNode init = null;
-        List<ActionNode> actions = new ArrayList<>();
-        List<FragmentDefNode> fragments = new ArrayList<>();
-        LayoutDirectiveNode layout = null;
-        List<SlotFillNode> slotFills = new ArrayList<>();
-
-        SourceLocation pageLoc = peek().location();
-
-        // Parse header directives
-        while (!isAtEnd() && !check(TokenType.HTML) && !check(TokenType.EXPR_START)) {
-            Token t = peek();
-            switch (t.type()) {
-                case PAGE -> {
-                    consume();
-                    Token pathToken = expect(TokenType.STRING_LITERAL, "page path");
-                    path = pathToken.value();
-                }
-                case INJECT -> {
-                    SourceLocation loc = consume().location();
-                    Token type = expect(TokenType.IDENTIFIER, "type name");
-                    Token name = expect(TokenType.IDENTIFIER, "variable name");
-                    injects.add(new InjectNode(type.value(), name.value(), loc));
-                }
-                case INIT -> {
-                    SourceLocation loc = consume().location();
-                    Token code = expect(TokenType.CODE_BLOCK, "code block");
-                    init = new InitNode(code.value(), loc);
-                }
-                case ACTION -> {
-                    SourceLocation loc = consume().location();
-                    Token method = expect(TokenType.HTTP_METHOD, "HTTP method");
-                    Token code = expect(TokenType.CODE_BLOCK, "code block");
-                    actions.add(new ActionNode(method.value(), code.value(), loc));
-                }
-                case FRAGMENT_DEF -> {
-                    SourceLocation loc = consume().location();
-                    Token name = expect(TokenType.STRING_LITERAL, "fragment name");
-                    Token bodyCode = expect(TokenType.CODE_BLOCK, "fragment body");
-                    // Re-lex the fragment body as template content
-                    BodyNode body = parseFragmentBody(bodyCode.value(), loc);
-                    fragments.add(new FragmentDefNode(name.value(), body, loc));
-                }
-                case LAYOUT -> {
-                    SourceLocation loc = consume().location();
-                    Token name = expect(TokenType.STRING_LITERAL, "layout name");
-                    layout = new LayoutDirectiveNode(name.value(), loc);
-                }
-                case SLOT_FILL -> {
-                    SourceLocation loc = consume().location();
-                    Token name = expect(TokenType.IDENTIFIER, "slot name");
-                    Token bodyCode = expect(TokenType.CODE_BLOCK, "slot body");
-                    BodyNode body = parseFragmentBody(bodyCode.value(), loc);
-                    slotFills.add(new SlotFillNode(name.value(), body, loc));
-                }
-                case EOF -> {
-                    // Page with no body — just header directives
-                    break;
-                }
-                default -> throw error("Unexpected token " + t.type() + " in header", t.location());
-            }
-            if (check(TokenType.EOF)) break;
-        }
-
-        // Parse body
-        BodyNode body = parseBody();
-
-        return new PageNode(path, injects, init, actions, fragments, layout, slotFills, body, pageLoc);
-    }
-
-    private BodyNode parseBody() {
+    /**
+     * Parse the template tokens into a BodyNode.
+     */
+    public BodyNode parseBody() {
         List<Node> children = new ArrayList<>();
         SourceLocation loc = isAtEnd() ? new SourceLocation(fileName, 1, 1) : peek().location();
 
@@ -148,7 +79,6 @@ public class Parser {
 
     /**
      * Check if the next template expression starts with the given keyword.
-     * Looks at {{ KEYWORD pattern without consuming tokens.
      */
     private boolean isExprKeyword(TokenType keyword) {
         if (pos + 1 >= tokens.size()) return false;
@@ -165,9 +95,9 @@ public class Parser {
             case KEYWORD_IF -> parseIfBlock(start);
             case KEYWORD_FOR -> parseForBlock(start);
             case KEYWORD_RAW -> parseRawExpression(start);
-            case KEYWORD_FRAGMENT -> parseFragmentCall(start);
+            case KEYWORD_INCLUDE -> parseInclude(start);
             case KEYWORD_COMPONENT -> parseComponentCall(start);
-            case KEYWORD_SLOT -> parseSlotRender(start);
+            case KEYWORD_CONTENT -> parseContent(start);
             default -> parseExpressionOutput(start);
         };
     }
@@ -188,7 +118,6 @@ public class Parser {
             // Check for else if
             if (check(TokenType.KEYWORD_IF)) {
                 // {{ else if cond }} — desugar to else { if cond { ... } }
-                // The nested parseIfBlock will consume {{ end }} for the whole chain
                 IfNode elseIf = parseIfBlock(peek().location());
                 elseBody = new BodyNode(List.of(elseIf), elseIf.location());
                 elseIfConsumedEnd = true;
@@ -232,38 +161,88 @@ public class Parser {
         return new RawExpressionOutputNode(expr, start);
     }
 
-    private FragmentCallNode parseFragmentCall(SourceLocation start) {
-        consume(); // fragment keyword
-        Token name = expect(TokenType.STRING_LITERAL, "fragment name");
+    private IncludeNode parseInclude(SourceLocation start) {
+        consume(); // include keyword
+        Token name = expect(TokenType.STRING_LITERAL, "include file name");
+
+        Map<String, Expression> params = parseKeyValueParams();
+
         expect(TokenType.EXPR_END, "'}}'");
-        return new FragmentCallNode(name.value(), start);
+        return new IncludeNode(name.value(), params, start);
     }
 
     private ComponentCallNode parseComponentCall(SourceLocation start) {
         consume(); // component keyword
         Token name = expect(TokenType.STRING_LITERAL, "component name");
 
-        // Parse params: key=value pairs
-        Map<String, Expression> params = new LinkedHashMap<>();
-        while (!check(TokenType.EXPR_END) && !isAtEnd()) {
-            Token key = expect(TokenType.IDENTIFIER, "parameter name");
-            expect(TokenType.EQUALS_SIGN, "'='");
-            Expression value = parseExpression();
-            params.put(key.value(), value);
-        }
+        Map<String, Expression> params = parseKeyValueParams();
 
         expect(TokenType.EXPR_END, "'}}'");
         return new ComponentCallNode(name.value(), params, start);
     }
 
-    private SlotRenderNode parseSlotRender(SourceLocation start) {
-        consume(); // slot keyword
-        String slotName = "default";
-        if (check(TokenType.IDENTIFIER)) {
-            slotName = consume().value();
+    /**
+     * Parse key=value parameter pairs until EXPR_END.
+     * Each value is a single expression token (string literal, number, identifier, etc.).
+     */
+    private Map<String, Expression> parseKeyValueParams() {
+        Map<String, Expression> params = new LinkedHashMap<>();
+        while (!check(TokenType.EXPR_END) && !isAtEnd()) {
+            Token key = expect(TokenType.IDENTIFIER, "parameter name");
+            expect(TokenType.EQUALS_SIGN, "'='");
+            Expression value = parseSingleExpression();
+            params.put(key.value(), value);
         }
+        return params;
+    }
+
+    /**
+     * Parse a single value expression for a parameter (not greedy).
+     * Handles: string literals, numbers, booleans, identifiers, and dotted property access.
+     */
+    private Expression parseSingleExpression() {
+        Token t = peek();
+        if (t == null) throw error("Expected expression value", new SourceLocation(fileName, 0, 0));
+
+        if (check(TokenType.STRING_LITERAL)) {
+            Token tok = consume();
+            return new Expression.StringLiteral(tok.value(), tok.location());
+        }
+        if (check(TokenType.NUMBER)) {
+            Token tok = consume();
+            return new Expression.NumberLiteral(tok.value(), tok.location());
+        }
+        if (check(TokenType.TRUE) || check(TokenType.FALSE)) {
+            Token tok = consume();
+            return new Expression.BooleanLiteral("true".equals(tok.value()), tok.location());
+        }
+        if (check(TokenType.IDENTIFIER)) {
+            // Could be simple identifier or dotted access (e.g. post.title)
+            List<Token> exprTokens = new ArrayList<>();
+            exprTokens.add(consume());
+            while ((check(TokenType.DOT) || check(TokenType.NULL_SAFE_DOT)) && !isAtEnd()) {
+                exprTokens.add(consume()); // dot
+                exprTokens.add(expect(TokenType.IDENTIFIER, "property name")); // property
+                // Handle method calls
+                if (check(TokenType.LPAREN)) {
+                    exprTokens.add(consume()); // (
+                    while (!check(TokenType.RPAREN) && !isAtEnd()) {
+                        exprTokens.add(consume());
+                    }
+                    exprTokens.add(expect(TokenType.RPAREN, "')'"));
+                }
+            }
+            ExpressionParser ep = new ExpressionParser(exprTokens);
+            return ep.parse();
+        }
+
+        throw error("Unexpected token in parameter value: " + t.type(), t.location());
+    }
+
+    private ContentNode parseContent(SourceLocation start) {
+        consume(); // content keyword
         expect(TokenType.EXPR_END, "'}}'");
-        return new SlotRenderNode(slotName, start);
+        return new ContentNode(start);
     }
 
     private ExpressionOutputNode parseExpressionOutput(SourceLocation start) {
@@ -274,12 +253,10 @@ public class Parser {
 
     /**
      * Parse expression from the remaining tokens (until EXPR_END).
-     * Collects expression tokens and delegates to ExpressionParser.
      */
     private Expression parseExpression() {
         List<Token> exprTokens = new ArrayList<>();
         while (!check(TokenType.EXPR_END) && !isAtEnd()) {
-            // Stop at tokens that aren't part of expressions
             TokenType t = peek().type();
             if (t == TokenType.KEYWORD_END || t == TokenType.KEYWORD_ELSE) break;
             exprTokens.add(consume());
@@ -292,20 +269,6 @@ public class Parser {
 
         ExpressionParser ep = new ExpressionParser(exprTokens);
         return ep.parse();
-    }
-
-    /**
-     * Re-lex fragment/slot body content as template HTML.
-     * The content was captured as a brace-matched code block but contains HTML + {{ }}.
-     */
-    private BodyNode parseFragmentBody(String content, SourceLocation baseLoc) {
-        // Create a mini-lexer that starts in body mode
-        Lexer bodyLexer = new Lexer(content, fileName);
-        // Force body mode by just letting it lex — fragment content has no @directives
-        List<Token> bodyTokens = bodyLexer.tokenize();
-
-        Parser bodyParser = new Parser(bodyTokens, fileName);
-        return bodyParser.parseBody();
     }
 
     // ========== Token helpers ==========

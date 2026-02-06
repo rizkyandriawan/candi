@@ -8,13 +8,13 @@
 ┌──────────────────────────────────────────────────────────┐
 │                     .page.html                           │
 │                                                          │
-│   ┌─────────────────────┐  ┌──────────────────────────┐  │
-│   │  Header             │  │  Body                    │  │
-│   │  @page "/posts"     │  │  <h1>{{ title }}</h1>    │  │
-│   │  @inject Service s  │  │  {{ for p in posts }}    │  │
-│   │  @init { ... }      │  │    <p>{{ p.title }}</p>  │  │
-│   │  @action POST { } │  │  {{ end }}               │  │
-│   └─────────────────────┘  └──────────────────────────┘  │
+│   ┌─────────────────────────┐  ┌──────────────────────┐  │
+│   │  Java Class             │  │  <template>          │  │
+│   │  @Page("/posts")        │  │  <h1>{{ title }}</h1> │  │
+│   │  @Autowired Service s   │  │  {{ for p in posts }}│  │
+│   │  init() { ... }         │  │    <p>{{ p.title }}</p>│ │
+│   │  @Post create() { }    │  │  {{ end }}           │  │
+│   └─────────────────────────┘  └──────────────────────┘  │
 │              │                          │                 │
 │              ▼                          ▼                 │
 │        Java bytecode            HTML renderer             │
@@ -36,21 +36,29 @@
 
 ## The Approach
 
-Candi brings back PHP's fullstack-in-one-file workflow, built on Spring Boot.
+Candi brings back PHP's fullstack-in-one-file workflow, built on Spring Boot. The top half is a real Java class with fields, methods, and annotations. The bottom half is an HTML template. The compiler reads both, then generates a single Spring bean with a `render()` method.
 
 ```html
-@page "/posts"
-@inject PostService posts
+@Page("/posts")
+public class PostsPage {
 
-@init {
-  allPosts = posts.findAll();
+    @Autowired
+    private PostService posts;
+
+    private List<Post> allPosts;
+
+    public void init() {
+        allPosts = posts.findAll();
+    }
+
+    @Post
+    public ActionResult create() {
+        posts.create(ctx.form("title"), ctx.form("body"));
+        return ActionResult.redirect("/posts");
+    }
 }
 
-@action POST {
-  posts.create(ctx.form("title"), ctx.form("body"));
-  redirect("/posts");
-}
-
+<template>
 <h1>All Posts</h1>
 {{ for post in allPosts }}
   <article>
@@ -68,23 +76,30 @@ Candi brings back PHP's fullstack-in-one-file workflow, built on Spring Boot.
   <textarea name="body"></textarea>
   <button>Publish</button>
 </form>
+</template>
 ```
 
-One file. Route, injection, data loading, form handling, HTML — all in one place. Compiled to bytecode at build time.
+One file. Route, injection, data loading, form handling, HTML — all in one place. The Java part is real Java with full IDE support. Compiled to bytecode at build time.
 
-## Header Directives
+## Java Class
 
-| Directive | Syntax | Purpose |
-|-----------|--------|---------|
-| `@page` | `@page "/path/{id}"` | Route binding with path params |
-| `@inject` | `@inject Type name` | Spring dependency injection |
-| `@init` | `@init { code }` | Load data, run setup logic |
-| `@action` | `@action POST { code }` | Handle POST, PUT, DELETE |
-| `@fragment` | `@fragment "name" { html }` | HTMX-friendly partial |
-| `@layout` | `@layout "name"` | Wrap in layout template |
-| `@slot` | `@slot name { html }` | Fill named layout slot |
+The top section is a standard Java class. The compiler preserves it and adds Spring annotations + a `render()` method.
+
+| Annotation | Purpose |
+|------------|---------|
+| `@Page("/path/{id}")` | Route binding with path params |
+| `@Layout("name")` | Wrap page in a layout template |
+| `@Autowired` | Spring dependency injection |
+| `@Post` | Handle POST requests |
+| `@Put` | Handle PUT requests |
+| `@Delete` | Handle DELETE requests |
+| `@Patch` | Handle PATCH requests |
+
+The `init()` method runs once per request before rendering. Action methods (`@Post`, `@Delete`, etc.) return `ActionResult` for redirects or re-renders.
 
 ## Template Expressions
+
+The `<template>` section uses Go-style `{{ }}` syntax:
 
 | Syntax | Output |
 |--------|--------|
@@ -94,10 +109,51 @@ One file. Route, injection, data loading, form handling, HTML — all in one pla
 | `{{ post?.title }}` | Null-safe access |
 | `{{ if cond }}...{{ end }}` | Conditional |
 | `{{ if a }}...{{ else }}...{{ end }}` | If/else |
+| `{{ if a }}...{{ else if b }}...{{ end }}` | Else-if chain |
 | `{{ for item in list }}...{{ end }}` | Loop |
-| `{{ fragment "name" }}` | Include fragment |
+| `{{ include "header" title="Home" }}` | Include HTML partial |
 | `{{ component "card" title="Hello" }}` | Render component |
-| `{{ slot content }}` | Render layout slot |
+| `{{ content }}` | Layout content placeholder |
+
+## Layouts
+
+A layout is a `.layout.html` file with a Java class and a `{{ content }}` placeholder:
+
+```html
+public class BaseLayout {
+}
+
+<template>
+<!DOCTYPE html>
+<html>
+<head><title>My App</title></head>
+<body>
+  <nav>My App</nav>
+  {{ content }}
+  <footer>Powered by Candi</footer>
+</body>
+</html>
+</template>
+```
+
+Pages opt into a layout with `@Layout("base")`. The page's template is injected at `{{ content }}`.
+
+## Components
+
+Reusable UI elements with parameters:
+
+```html
+public class AlertComponent {
+    private String type;
+    private String message;
+}
+
+<template>
+<div class="alert alert-{{ type }}">{{ message }}</div>
+</template>
+```
+
+Used in any page: `{{ component "alert" type="error" message="Oops" }}`
 
 ## Quick Start
 
@@ -126,10 +182,13 @@ One file. Route, injection, data loading, form handling, HTML — all in one pla
 Create `src/main/candi/hello.page.html`:
 
 ```html
-@page "/hello"
+@Page("/hello")
+public class HelloPage {
+}
 
+<template>
 <h1>Hello from Candi</h1>
-<p>The time is {{ java.time.LocalTime.now() }}</p>
+</template>
 ```
 
 ```bash
@@ -170,9 +229,9 @@ candi/
 | Feature | Detail |
 |---------|--------|
 | Compile-time safety | Template errors caught at build, not runtime |
-| Spring Boot native | Use any Spring service, repository, component via `@inject` |
-| HTMX-ready | `@fragment` serves partials via `HX-Fragment` header |
-| Layouts & components | `@layout` + `{{ component }}` for reuse |
+| Real Java | Fields, methods, annotations — full IDE support in the class section |
+| Spring Boot native | Use any Spring service, repository, component via `@Autowired` |
+| Layouts & components | `@Layout` + `{{ component }}` + `{{ include }}` for reuse |
 | Null-safe expressions | `?.` compiles to Java null checks |
 | Hot reload | SSE-based live reload, no server restart |
 | GraalVM compatible | Runtime hints included for native image |

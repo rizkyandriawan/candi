@@ -1,7 +1,6 @@
 package candi.compiler.type;
 
 import candi.compiler.ast.*;
-import candi.compiler.codegen.CodeGenerator;
 import candi.compiler.expr.Expression;
 
 import java.util.*;
@@ -9,17 +8,8 @@ import java.util.*;
 /**
  * Resolves types for page variables and expressions using classpath reflection.
  *
- * <p>Usage:
- * <pre>
- *   TypeResolver resolver = new TypeResolver(classLoader);
- *   List<TypeCheckError> errors = resolver.resolve(pageNode);
- *   TypeInfo postType = resolver.getVariableType("post");
- * </pre>
- *
- * <p>Resolution steps:
- * 1. Resolve @inject types from classpath
- * 2. Infer @init variable types from RHS expressions
- * 3. Walk body AST and type-check all expressions
+ * <p>In v2, field types come directly from the Java source (explicit declarations)
+ * instead of being inferred from @init code patterns.
  */
 public class TypeResolver {
 
@@ -42,31 +32,23 @@ public class TypeResolver {
         errors.clear();
         symbolTable.clear();
 
-        // Step 1: Resolve @inject types
-        for (InjectNode inject : page.injects()) {
-            TypeInfo type = resolveTypeName(inject.typeName());
+        // Step 1: Resolve field types from explicit declarations
+        for (var entry : page.fieldTypes().entrySet()) {
+            String fieldName = entry.getKey();
+            String typeName = entry.getValue();
+            TypeInfo type = resolveTypeName(typeName);
             if (type != null) {
-                symbolTable.put(inject.variableName(), type);
+                symbolTable.put(fieldName, type);
             } else {
                 errors.add(new TypeCheckError(
-                        "Cannot resolve type: " + inject.typeName(),
-                        inject.location()));
+                        "Cannot resolve type: " + typeName,
+                        page.location()));
             }
         }
 
-        // Step 2: Infer @init variable types
-        if (page.init() != null) {
-            inferInitTypes(page.init());
-        }
-
-        // Step 3: Type-check body expressions
+        // Step 2: Type-check body expressions
         if (page.body() != null) {
             checkBody(page.body().children());
-        }
-
-        // Step 4: Type-check fragment bodies
-        for (FragmentDefNode fragment : page.fragments()) {
-            checkBody(fragment.body().children());
         }
 
         return errors;
@@ -88,7 +70,6 @@ public class TypeResolver {
 
     /**
      * Resolve a type name string to TypeInfo via classpath reflection.
-     * Handles simple names, fully-qualified names, and common imports.
      */
     TypeInfo resolveTypeName(String typeName) {
         // Strip generics for class loading (e.g. "List<Post>" -> "List")
@@ -105,75 +86,18 @@ public class TypeResolver {
     }
 
     private Class<?> tryLoadClass(String name) {
-        // Try as-is (fully qualified)
         try {
             return classLoader.loadClass(name);
         } catch (ClassNotFoundException ignored) {}
 
-        // Try java.lang package
         try {
             return classLoader.loadClass("java.lang." + name);
         } catch (ClassNotFoundException ignored) {}
 
-        // Try java.util package
         try {
             return classLoader.loadClass("java.util." + name);
         } catch (ClassNotFoundException ignored) {}
 
-        return null;
-    }
-
-    /**
-     * Infer types of @init block variables from their RHS.
-     * Uses simple pattern matching on the init code.
-     */
-    private void inferInitTypes(InitNode init) {
-        Set<String> vars = CodeGenerator.extractInitVariables(init.code());
-        for (String var : vars) {
-            // Try to infer type from the assignment RHS
-            TypeInfo inferred = inferFromInitCode(init.code(), var);
-            symbolTable.put(var, inferred != null ? inferred : TypeInfo.OBJECT);
-        }
-    }
-
-    /**
-     * Try to infer the type of a variable from its @init assignment.
-     * e.g. "post = posts.getById(id);" → look up posts type, resolve getById return type
-     */
-    private TypeInfo inferFromInitCode(String code, String varName) {
-        for (String line : code.split("\n")) {
-            String trimmed = line.trim();
-            int eqIdx = trimmed.indexOf('=');
-            if (eqIdx <= 0) continue;
-
-            String lhs = trimmed.substring(0, eqIdx).trim();
-            if (!lhs.equals(varName)) continue;
-
-            String rhs = trimmed.substring(eqIdx + 1).trim();
-            if (rhs.endsWith(";")) rhs = rhs.substring(0, rhs.length() - 1).trim();
-
-            // Simple pattern: varName.methodName(...)
-            int dotIdx = rhs.indexOf('.');
-            if (dotIdx > 0) {
-                String objectName = rhs.substring(0, dotIdx).trim();
-                TypeInfo objectType = symbolTable.get(objectName);
-                if (objectType != null) {
-                    String rest = rhs.substring(dotIdx + 1).trim();
-                    int parenIdx = rest.indexOf('(');
-                    if (parenIdx > 0) {
-                        String methodName = rest.substring(0, parenIdx).trim();
-                        // Count args roughly
-                        String argsStr = rest.substring(parenIdx + 1);
-                        int argCount = argsStr.contains(",") ? argsStr.split(",").length : (argsStr.trim().startsWith(")") ? 0 : 1);
-                        TypeInfo result = objectType.resolveMethod(methodName, argCount);
-                        if (result != null) return result;
-                    } else {
-                        TypeInfo result = objectType.resolveProperty(rest);
-                        if (result != null) return result;
-                    }
-                }
-            }
-        }
         return null;
     }
 
@@ -187,11 +111,11 @@ public class TypeResolver {
 
     private void checkNode(Node node) {
         switch (node) {
-            case HtmlNode ignored -> {} // Static HTML, no type checking needed
+            case HtmlNode ignored -> {}
             case ExpressionOutputNode expr -> resolveExpressionType(expr.expression());
             case RawExpressionOutputNode expr -> resolveExpressionType(expr.expression());
             case IfNode ifNode -> {
-                TypeInfo condType = resolveExpressionType(ifNode.condition());
+                resolveExpressionType(ifNode.condition());
                 checkBody(ifNode.thenBody().children());
                 if (ifNode.elseBody() != null) {
                     checkBody(ifNode.elseBody().children());
@@ -205,20 +129,23 @@ public class TypeResolver {
                                 "For loop requires iterable, got " + collectionType,
                                 forNode.location()));
                     } else {
-                        // Add loop variable to scope
                         TypeInfo elementType = collectionType.elementType();
                         symbolTable.put(forNode.variableName(), elementType);
                     }
                 }
                 checkBody(forNode.body().children());
             }
-            case FragmentCallNode ignored -> {} // Fragment calls are validated at runtime
+            case IncludeNode include -> {
+                for (Expression expr : include.params().values()) {
+                    resolveExpressionType(expr);
+                }
+            }
             case ComponentCallNode comp -> {
                 for (Expression expr : comp.params().values()) {
                     resolveExpressionType(expr);
                 }
             }
-            case SlotRenderNode ignored -> {}
+            case ContentNode ignored -> {}
             default -> {}
         }
     }

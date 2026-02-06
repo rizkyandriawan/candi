@@ -15,12 +15,15 @@ class IncrementalCompilerTest {
 
     @Test
     void compilesSimplePageToBytecode() throws Exception {
-        // Create a simple .page.html file
         Path pageFile = tempDir.resolve("hello.page.html");
         Files.writeString(pageFile, """
-                @page "/hello"
+                @Page("/hello")
+                public class HelloPage {
+                }
 
+                <template>
                 <h1>Hello World</h1>
+                </template>
                 """);
 
         IncrementalCompiler compiler = new IncrementalCompiler();
@@ -30,8 +33,8 @@ class IncrementalCompilerTest {
                 compiler.compile(pageFile, "pages", classpath);
 
         assertFalse(result.hasErrors(), "Errors: " + result.errors());
-        assertEquals("Hello__Page", result.className());
-        assertEquals("pages.Hello__Page", result.fqcn());
+        assertEquals("HelloPage", result.className());
+        assertEquals("pages.HelloPage", result.fqcn());
         assertNotNull(result.bytecode());
         assertTrue(result.bytecode().length > 0);
     }
@@ -40,13 +43,19 @@ class IncrementalCompilerTest {
     void compilesPageWithExpressions() throws Exception {
         Path pageFile = tempDir.resolve("greeting.page.html");
         Files.writeString(pageFile, """
-                @page "/greet"
+                @Page("/greet")
+                public class GreetingPage {
 
-                @init {
-                  name = "World";
+                    private String name;
+
+                    public void init() {
+                        name = "World";
+                    }
                 }
 
+                <template>
                 <h1>Hello {{ name }}</h1>
+                </template>
                 """);
 
         IncrementalCompiler compiler = new IncrementalCompiler();
@@ -60,13 +69,17 @@ class IncrementalCompilerTest {
     }
 
     @Test
-    void reportsCandiCompilationErrors() throws Exception {
+    void reportsJavaCompilationErrors() throws Exception {
         Path pageFile = tempDir.resolve("broken.page.html");
         Files.writeString(pageFile, """
-                @page "/broken"
-                @unknown_directive
+                @Page("/broken")
+                public class BrokenPage {
+                    private NonExistentType foo;
+                }
 
+                <template>
                 <h1>Broken</h1>
+                </template>
                 """);
 
         IncrementalCompiler compiler = new IncrementalCompiler();
@@ -83,9 +96,13 @@ class IncrementalCompilerTest {
     void loadCompiledClassViaPageClassLoader() throws Exception {
         Path pageFile = tempDir.resolve("test.page.html");
         Files.writeString(pageFile, """
-                @page "/test"
+                @Page("/test")
+                public class TestPage {
+                }
 
+                <template>
                 <p>Test page</p>
+                </template>
                 """);
 
         IncrementalCompiler compiler = new IncrementalCompiler();
@@ -102,7 +119,7 @@ class IncrementalCompilerTest {
 
         Class<?> pageClass = loader.loadClass(result.fqcn());
         assertNotNull(pageClass);
-        assertEquals("pages.Test__Page", pageClass.getName());
+        assertEquals("pages.TestPage", pageClass.getName());
 
         // Verify it implements CandiPage
         assertTrue(candi.runtime.CandiPage.class.isAssignableFrom(pageClass));
@@ -117,9 +134,13 @@ class IncrementalCompilerTest {
     void compiledPageCanBeInstantiated() throws Exception {
         Path pageFile = tempDir.resolve("simple.page.html");
         Files.writeString(pageFile, """
-                @page "/simple"
+                @Page("/simple")
+                public class SimplePage {
+                }
 
+                <template>
                 <h1>Simple Page</h1>
+                </template>
                 """);
 
         IncrementalCompiler compiler = new IncrementalCompiler();

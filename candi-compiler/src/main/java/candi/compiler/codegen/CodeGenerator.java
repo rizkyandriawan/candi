@@ -6,8 +6,13 @@ import candi.compiler.expr.Expression;
 import java.util.*;
 
 /**
- * Generates Java source code from the page AST.
- * Each .page.html becomes one Java class implementing CandiPage.
+ * Generates Java source code from a v2 page AST.
+ * Takes the user's Java class and injects:
+ * - implements CandiPage
+ * - @Component @Scope(REQUEST) annotations
+ * - @CandiRoute annotation
+ * - import statements
+ * - render(HtmlOutput out) method from template
  */
 public class CodeGenerator {
 
@@ -26,14 +31,7 @@ public class CodeGenerator {
     public String generate() {
         generatePackage();
         generateImports();
-        generateClassOpen();
-        generateFields();
-        generateInit();
-        generateHandleAction();
-        generateRender();
-        generateRenderFragment();
-        generateFragmentMethods();
-        generateClassClose();
+        generateClassWithRender();
         return sb.toString();
     }
 
@@ -49,158 +47,163 @@ public class CodeGenerator {
         line("import org.springframework.context.annotation.Scope;");
         line("import org.springframework.stereotype.Component;");
         line("import org.springframework.web.context.WebApplicationContext;");
-        line("import candi.runtime.CandiPage;");
-        line("import candi.runtime.ActionResult;");
-        line("import candi.runtime.HtmlOutput;");
-        line("import candi.runtime.CandiRoute;");
-        if (!page.fragments().isEmpty()) {
-            line("import candi.runtime.FragmentNotFoundException;");
-        }
-        if (page.layout() != null) {
-            line("import candi.runtime.CandiLayout;");
-            line("import candi.runtime.SlotProvider;");
-        }
-        if (hasComponentCalls()) {
-            line("import candi.runtime.CandiComponent;");
-            line("import org.springframework.context.ApplicationContext;");
-        }
+        line("import candi.runtime.*;");
         line("import java.util.Objects;");
         if (hasComponentCalls()) {
+            line("import org.springframework.context.ApplicationContext;");
             line("import java.util.Map;");
             line("import java.util.HashMap;");
+        }
+
+        // Add imports from user's Java source (extract import lines)
+        if (page.javaSource() != null && !page.javaSource().isEmpty()) {
+            for (String srcLine : page.javaSource().split("\n")) {
+                String trimmed = srcLine.trim();
+                if (trimmed.startsWith("import ")) {
+                    line(trimmed);
+                }
+            }
         }
         line("");
     }
 
-    private void generateClassOpen() {
-        line("@Component");
-        line("@Scope(WebApplicationContext.SCOPE_REQUEST)");
+    /**
+     * Generate the class by transforming the user's Java source:
+     * - Add class-level annotations
+     * - Add 'implements CandiPage'
+     * - Inject render() method before closing brace
+     * - For layouts: inject render(HtmlOutput, SlotProvider) instead
+     */
+    private void generateClassWithRender() {
+        String javaSource = page.javaSource();
 
-        // Build methods array
+        if (javaSource == null || javaSource.isEmpty()) {
+            // Body-only page (include file) — generate minimal class
+            generateMinimalClass();
+            return;
+        }
+
+        // Build methods set for @CandiRoute
         Set<String> methods = new LinkedHashSet<>();
         methods.add("GET");
-        for (ActionNode action : page.actions()) {
-            methods.add(action.method());
+        for (String action : page.fieldNames()) {
+            // Action methods are detected from annotations, not field names
         }
+        // Check the Java source for action annotations
+        if (javaSource.contains("@Post")) methods.add("POST");
+        if (javaSource.contains("@Put")) methods.add("PUT");
+        if (javaSource.contains("@Delete")) methods.add("DELETE");
+        if (javaSource.contains("@Patch")) methods.add("PATCH");
+
         String methodsStr = methods.stream()
                 .map(m -> "\"" + m + "\"")
                 .reduce((a, b) -> a + ", " + b)
                 .orElse("\"GET\"");
 
-        line("@CandiRoute(path = \"" + escapeJavaString(page.path()) + "\", methods = {" + methodsStr + "})");
-        line("public class " + className + " implements CandiPage {");
-        indent++;
-    }
-
-    private void generateFields() {
-        // Injected fields
-        for (InjectNode inject : page.injects()) {
-            line("");
-            line("@Autowired");
-            line("private " + inject.typeName() + " " + inject.variableName() + ";");
+        // Add annotations before class declaration
+        line("@Component");
+        line("@Scope(WebApplicationContext.SCOPE_REQUEST)");
+        if (page.pagePath() != null) {
+            line("@CandiRoute(path = \"" + escapeJavaString(page.pagePath()) + "\", methods = {" + methodsStr + "})");
         }
 
-        // ApplicationContext for component instantiation
+        // Transform the class declaration: add "implements CandiPage"
+        // Find the class line and modify it
+        String[] lines = javaSource.split("\n");
+        boolean classStarted = false;
+        boolean needsApplicationContext = hasComponentCalls() &&
+                !javaSource.contains("ApplicationContext");
+
+        for (String srcLine : lines) {
+            String trimmed = srcLine.trim();
+
+            // Skip package/import statements — already generated above
+            if (trimmed.startsWith("package ") || trimmed.startsWith("import ")) {
+                continue;
+            }
+
+            // Skip user annotations that we handle ourselves
+            if (trimmed.startsWith("@Page(") || trimmed.startsWith("@Layout(")) {
+                continue;
+            }
+
+            // Transform class declaration
+            if (!classStarted && trimmed.contains("class " + page.className())) {
+                String modifiedLine = trimmed;
+                // Add 'implements CandiPage' if not already present
+                if (!modifiedLine.contains("implements")) {
+                    modifiedLine = modifiedLine.replace("{", "implements CandiPage {");
+                } else if (!modifiedLine.contains("CandiPage")) {
+                    modifiedLine = modifiedLine.replace("implements ", "implements CandiPage, ");
+                }
+                line(modifiedLine);
+                classStarted = true;
+                indent++;
+
+                // Inject ApplicationContext if needed for components
+                if (needsApplicationContext) {
+                    line("");
+                    line("@Autowired");
+                    line("private ApplicationContext _applicationContext;");
+                }
+
+                // Inject layout field if page uses a layout
+                if (page.layoutName() != null) {
+                    line("");
+                    line("@Autowired");
+                    line("private CandiLayout " + layoutFieldName(page.layoutName()) + ";");
+                }
+                continue;
+            }
+
+            // Skip the closing brace of the class — we'll add render() then close
+            if (classStarted && trimmed.equals("}") && isLastClosingBrace(lines, srcLine)) {
+                continue;
+            }
+
+            // Emit the line as-is (preserving user's code)
+            if (classStarted) {
+                line(trimmed);
+            } else {
+                line(srcLine);
+            }
+        }
+
+        // Generate render method
+        line("");
+        generateRender();
+
+        // Close class
+        indent--;
+        line("}");
+    }
+
+    private void generateMinimalClass() {
+        line("@Component");
+        line("@Scope(WebApplicationContext.SCOPE_REQUEST)");
+        line("public class " + className + " implements CandiPage {");
+        indent++;
         if (hasComponentCalls()) {
             line("");
             line("@Autowired");
-            line("private ApplicationContext applicationContext;");
-        }
-
-        // Layout reference
-        if (page.layout() != null) {
-            line("");
-            line("@Autowired");
-            line("private CandiLayout " + layoutFieldName(page.layout().layoutName()) + ";");
-        }
-
-        // Init block fields — we need to extract variable declarations from the init code
-        // For MVP, we'll declare fields as Object type and let the init block assign them
-        // The init code is raw Java, so we parse simple assignments: var = expr;
-        if (page.init() != null) {
-            Set<String> declaredVars = extractInitVariables(page.init().code());
-            for (String var : declaredVars) {
-                line("private Object " + var + ";");
-            }
+            line("private ApplicationContext _applicationContext;");
         }
         line("");
-    }
-
-    private void generateInit() {
-        line("@Override");
-        line("public void init() {");
-        indent++;
-        if (page.init() != null) {
-            // Emit the init code, converting simple assignments to field assignments
-            String code = page.init().code();
-            for (String codeLine : code.split("\n")) {
-                String trimmed = codeLine.trim();
-                if (!trimmed.isEmpty()) {
-                    // Prefix simple assignments with "this."
-                    if (isSimpleAssignment(trimmed)) {
-                        line("this." + trimmed);
-                    } else {
-                        line(trimmed);
-                    }
-                }
-            }
-        }
+        generateRender();
         indent--;
         line("}");
-        line("");
-    }
-
-    private void generateHandleAction() {
-        line("@Override");
-        line("public ActionResult handleAction(String method) {");
-        indent++;
-        for (ActionNode action : page.actions()) {
-            line("if (\"" + action.method() + "\".equals(method)) {");
-            indent++;
-            // Emit action code, converting redirect() calls
-            String code = action.code();
-            for (String codeLine : code.split("\n")) {
-                String trimmed = codeLine.trim();
-                if (!trimmed.isEmpty()) {
-                    if (trimmed.startsWith("redirect(")) {
-                        // Convert redirect("url") to return ActionResult.redirect("url")
-                        line("return ActionResult." + trimmed);
-                    } else if (trimmed.startsWith("this.") || isSimpleMethodCall(trimmed)) {
-                        line("this." + trimmed);
-                    } else {
-                        line(trimmed);
-                    }
-                }
-            }
-            indent--;
-            line("}");
-        }
-        line("return ActionResult.methodNotAllowed();");
-        indent--;
-        line("}");
-        line("");
     }
 
     private void generateRender() {
         line("@Override");
         line("public void render(HtmlOutput out) {");
         indent++;
-        if (page.layout() != null) {
-            // Delegate to layout, passing slot content as lambda
-            String layoutField = layoutFieldName(page.layout().layoutName());
+        if (page.layoutName() != null) {
+            // Delegate to layout, passing content as lambda
+            String layoutField = layoutFieldName(page.layoutName());
             line(layoutField + ".render(out, (slotName, slotOut) -> {");
             indent++;
-            line("switch (slotName) {");
-            indent++;
-            for (SlotFillNode slot : page.slotFills()) {
-                line("case \"" + escapeJavaString(slot.slotName()) + "\" -> {");
-                indent++;
-                generateBodyNodes(slot.body().children());
-                indent--;
-                line("}");
-            }
-            // Default slot: render the page body
-            line("default -> {");
+            line("if (\"content\".equals(slotName)) {");
             indent++;
             if (page.body() != null) {
                 generateBodyNodes(page.body().children());
@@ -208,51 +211,10 @@ public class CodeGenerator {
             indent--;
             line("}");
             indent--;
-            line("}");
-            indent--;
             line("});");
         } else if (page.body() != null) {
             generateBodyNodes(page.body().children());
         }
-        indent--;
-        line("}");
-        line("");
-    }
-
-    private void generateRenderFragment() {
-        if (page.fragments().isEmpty()) return;
-
-        line("@Override");
-        line("public void renderFragment(String name, HtmlOutput out) {");
-        indent++;
-        for (FragmentDefNode fragment : page.fragments()) {
-            String methodName = fragmentMethodName(fragment.name());
-            line("if (\"" + escapeJavaString(fragment.name()) + "\".equals(name)) {");
-            indent++;
-            line(methodName + "(out);");
-            line("return;");
-            indent--;
-            line("}");
-        }
-        line("throw new FragmentNotFoundException(name);");
-        indent--;
-        line("}");
-        line("");
-    }
-
-    private void generateFragmentMethods() {
-        for (FragmentDefNode fragment : page.fragments()) {
-            String methodName = fragmentMethodName(fragment.name());
-            line("private void " + methodName + "(HtmlOutput out) {");
-            indent++;
-            generateBodyNodes(fragment.body().children());
-            indent--;
-            line("}");
-            line("");
-        }
-    }
-
-    private void generateClassClose() {
         indent--;
         line("}");
     }
@@ -272,15 +234,14 @@ public class CodeGenerator {
             case RawExpressionOutputNode raw -> generateRawExpressionOutput(raw);
             case IfNode ifNode -> generateIf(ifNode);
             case ForNode forNode -> generateFor(forNode);
-            case FragmentCallNode call -> generateFragmentCall(call);
+            case IncludeNode include -> generateInclude(include);
             case ComponentCallNode call -> generateComponentCall(call);
-            case SlotRenderNode slot -> generateSlotRender(slot);
+            case ContentNode content -> generateContent(content);
             default -> throw new IllegalStateException("Unexpected node in body: " + node.getClass());
         }
     }
 
     private void generateHtml(HtmlNode html) {
-        // Split into lines for readability, but emit as single append for performance
         String content = html.content();
         if (!content.isEmpty()) {
             line("out.append(\"" + escapeJavaString(content) + "\");");
@@ -321,16 +282,18 @@ public class CodeGenerator {
         line("}");
     }
 
-    private void generateFragmentCall(FragmentCallNode node) {
-        String methodName = fragmentMethodName(node.fragmentName());
-        line(methodName + "(out);");
+    private void generateInclude(IncludeNode node) {
+        // Include is rendered at compile time — the include file contents are inlined.
+        // For now, emit a comment placeholder. The actual inlining is done by CandiCompiler.
+        // If the include wasn't resolved, emit a comment.
+        line("// TODO: include \"" + escapeJavaString(node.fileName()) + "\"");
     }
 
     private void generateComponentCall(ComponentCallNode node) {
         String beanName = componentBeanName(node.componentName());
         line("{");
         indent++;
-        line("CandiComponent _comp = applicationContext.getBean(\"" + beanName + "\", CandiComponent.class);");
+        line("CandiComponent _comp = _applicationContext.getBean(\"" + beanName + "\", CandiComponent.class);");
         if (!node.params().isEmpty()) {
             line("Map<String, Object> _params = new HashMap<>();");
             for (var entry : node.params().entrySet()) {
@@ -344,8 +307,8 @@ public class CodeGenerator {
         line("}");
     }
 
-    private void generateSlotRender(SlotRenderNode node) {
-        line("slots.renderSlot(\"" + escapeJavaString(node.slotName()) + "\", out);");
+    private void generateContent(ContentNode node) {
+        line("slots.renderSlot(\"content\", out);");
     }
 
     // ========== Expression Code Generation ==========
@@ -353,7 +316,6 @@ public class CodeGenerator {
     private String generateExpression(Expression expr) {
         return switch (expr) {
             case Expression.Variable v -> {
-                // Check if it's a field (from @inject or @init)
                 if (isField(v.name())) {
                     yield "this." + v.name();
                 }
@@ -407,11 +369,6 @@ public class CodeGenerator {
         };
     }
 
-    /**
-     * Wrap a condition expression for boolean evaluation.
-     * If the expression is already boolean (comparison, &&, ||, !), use as-is.
-     * Otherwise, generate a truthiness check.
-     */
     private String wrapBooleanCondition(Expression expr, String javaExpr) {
         if (expr instanceof Expression.BinaryOp || expr instanceof Expression.UnaryNot) {
             return javaExpr;
@@ -419,106 +376,67 @@ public class CodeGenerator {
         if (expr instanceof Expression.BooleanLiteral) {
             return javaExpr;
         }
-        // For variables and property accesses that might be Boolean objects
-        // We generate a truthiness test
+        if (expr instanceof Expression.MethodCall) {
+            return javaExpr;
+        }
         return javaExpr + " != null && !Boolean.FALSE.equals(" + javaExpr + ")";
     }
 
     // ========== Helpers ==========
 
     private boolean isField(String name) {
-        for (InjectNode inject : page.injects()) {
-            if (inject.variableName().equals(name)) return true;
-        }
-        if (page.init() != null) {
-            Set<String> vars = extractInitVariables(page.init().code());
-            if (vars.contains(name)) return true;
-        }
-        return false;
-    }
-
-    /**
-     * Extract variable names from init code.
-     * Looks for patterns like: varName = expr;
-     */
-    public static Set<String> extractInitVariables(String code) {
-        Set<String> vars = new LinkedHashSet<>();
-        for (String line : code.split("\n")) {
-            String trimmed = line.trim();
-            if (trimmed.isEmpty()) continue;
-            // Match: identifier = something;
-            int eqIdx = trimmed.indexOf('=');
-            if (eqIdx > 0 && eqIdx < trimmed.length() - 1 && trimmed.charAt(eqIdx + 1) != '=') {
-                String lhs = trimmed.substring(0, eqIdx).trim();
-                // lhs should be a simple identifier (no dots, no type prefix)
-                if (isSimpleIdentifier(lhs)) {
-                    vars.add(lhs);
-                }
-            }
-        }
-        return vars;
-    }
-
-    private static boolean isSimpleIdentifier(String s) {
-        if (s.isEmpty() || !Character.isJavaIdentifierStart(s.charAt(0))) return false;
-        for (int i = 1; i < s.length(); i++) {
-            if (!Character.isJavaIdentifierPart(s.charAt(i))) return false;
-        }
-        return true;
-    }
-
-    private boolean isSimpleAssignment(String line) {
-        // Match: varName = expr;
-        int eqIdx = line.indexOf('=');
-        if (eqIdx > 0 && eqIdx < line.length() - 1 && line.charAt(eqIdx + 1) != '=') {
-            String lhs = line.substring(0, eqIdx).trim();
-            return isSimpleIdentifier(lhs);
-        }
-        return false;
-    }
-
-    private boolean isSimpleMethodCall(String line) {
-        // Check if line starts with an identifier followed by .method(
-        int dotIdx = line.indexOf('.');
-        if (dotIdx > 0) {
-            String before = line.substring(0, dotIdx).trim();
-            return isSimpleIdentifier(before);
-        }
-        return false;
+        return page.fieldNames().contains(name);
     }
 
     private String toGetter(String property) {
         return "get" + Character.toUpperCase(property.charAt(0)) + property.substring(1);
     }
 
-    private String fragmentMethodName(String fragmentName) {
-        // Convert "post-content" to "renderFragment_postContent"
-        String safe = fragmentName.replace("-", "_");
-        // camelCase after underscores
-        StringBuilder result = new StringBuilder("renderFragment_");
-        boolean nextUpper = false;
-        for (char c : safe.toCharArray()) {
-            if (c == '_') {
+    private String layoutFieldName(String layoutName) {
+        return layoutName + "Layout";
+    }
+
+    private String componentBeanName(String componentName) {
+        StringBuilder sb = new StringBuilder();
+        boolean nextUpper = true;
+        for (char c : componentName.toCharArray()) {
+            if (c == '-' || c == '_') {
                 nextUpper = true;
             } else {
-                result.append(nextUpper ? Character.toUpperCase(c) : c);
+                sb.append(nextUpper ? Character.toUpperCase(c) : c);
                 nextUpper = false;
             }
         }
-        return result.toString();
+        return sb.toString() + "__Component";
     }
 
-    private void line(String text) {
-        for (int i = 0; i < indent; i++) {
-            sb.append("    ");
+    /**
+     * Check if a closing brace is the last one in the source (the class closing brace).
+     */
+    private boolean isLastClosingBrace(String[] lines, String currentLine) {
+        // Find this line and check if there are no more closing braces after it
+        boolean found = false;
+        for (int i = lines.length - 1; i >= 0; i--) {
+            if (lines[i].trim().equals("}")) {
+                if (lines[i] == currentLine || lines[i].equals(currentLine)) {
+                    return i == findLastClosingBraceIndex(lines);
+                }
+            }
         }
-        sb.append(text).append("\n");
+        return false;
+    }
+
+    private int findLastClosingBraceIndex(String[] lines) {
+        for (int i = lines.length - 1; i >= 0; i--) {
+            if (lines[i].trim().equals("}")) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     private boolean hasComponentCalls() {
-        return hasComponentCallsInBody(page.body()) ||
-               page.fragments().stream().anyMatch(f -> hasComponentCallsInBody(f.body())) ||
-               page.slotFills().stream().anyMatch(s -> hasComponentCallsInBody(s.body()));
+        return hasComponentCallsInBody(page.body());
     }
 
     private boolean hasComponentCallsInBody(BodyNode body) {
@@ -536,24 +454,11 @@ public class CodeGenerator {
         return false;
     }
 
-    private String layoutFieldName(String layoutName) {
-        // "base" → "baseLayout"
-        return layoutName + "Layout";
-    }
-
-    private String componentBeanName(String componentName) {
-        // "card" → "card__Component"
-        StringBuilder sb = new StringBuilder();
-        boolean nextUpper = true;
-        for (char c : componentName.toCharArray()) {
-            if (c == '-' || c == '_') {
-                nextUpper = true;
-            } else {
-                sb.append(nextUpper ? Character.toUpperCase(c) : c);
-                nextUpper = false;
-            }
+    private void line(String text) {
+        for (int i = 0; i < indent; i++) {
+            sb.append("    ");
         }
-        return sb.toString() + "__Component";
+        sb.append(text).append("\n");
     }
 
     static String escapeJavaString(String s) {

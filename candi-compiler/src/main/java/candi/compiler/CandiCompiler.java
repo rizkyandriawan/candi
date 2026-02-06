@@ -1,5 +1,6 @@
 package candi.compiler;
 
+import candi.compiler.ast.BodyNode;
 import candi.compiler.ast.PageNode;
 import candi.compiler.codegen.CodeGenerator;
 import candi.compiler.lexer.Lexer;
@@ -12,31 +13,60 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * Main entry point for the Candi compiler.
- * Compiles .page.html files to Java source code.
+ * Main entry point for the Candi compiler (v2).
+ * Compiles .page.html files (Java class + template) to Java source code.
+ *
+ * Pipeline:
+ *   Source → Lexer (splits Java/template) → JavaAnalyzer + Parser → PageNode → CodeGenerator
  */
 public class CandiCompiler {
 
     /**
      * Compile a .page.html source string to Java source code.
      *
-     * @param source   the .page.html content
-     * @param fileName the source file name (for error reporting)
+     * @param source      the .page.html content (Java class + template)
+     * @param fileName    the source file name (for error reporting)
      * @param packageName the Java package for the generated class
      * @param className   the Java class name for the generated class
      * @return generated Java source code
      */
     public String compile(String source, String fileName, String packageName, String className) {
-        // Stage 1: Lex
+        // Stage 1: Lex — split into Java source and template tokens
         Lexer lexer = new Lexer(source, fileName);
         List<Token> tokens = lexer.tokenize();
+        String javaSource = lexer.getJavaSource();
 
-        // Stage 2: Parse
+        // Stage 2: Analyze Java source
+        JavaAnalyzer analyzer = new JavaAnalyzer();
+        JavaAnalyzer.ClassInfo classInfo;
+        if (javaSource != null && !javaSource.isEmpty()) {
+            classInfo = analyzer.analyze(javaSource);
+        } else {
+            classInfo = new JavaAnalyzer.ClassInfo(
+                    className, null, null,
+                    java.util.Set.of(), java.util.Map.of(),
+                    java.util.Set.of(), java.util.Set.of());
+        }
+
+        // Stage 3: Parse template
         Parser parser = new Parser(tokens, fileName);
-        PageNode ast = parser.parse();
+        BodyNode body = parser.parseBody();
 
-        // Stage 3: Generate
-        CodeGenerator generator = new CodeGenerator(ast, packageName, className);
+        // Stage 4: Build AST
+        String resolvedClassName = classInfo.className() != null ? classInfo.className() : className;
+        PageNode ast = new PageNode(
+                javaSource,
+                resolvedClassName,
+                classInfo.pagePath(),
+                classInfo.layoutName(),
+                classInfo.fieldNames(),
+                classInfo.fieldTypes(),
+                body,
+                new SourceLocation(fileName, 1, 1)
+        );
+
+        // Stage 5: Generate
+        CodeGenerator generator = new CodeGenerator(ast, packageName, resolvedClassName);
         return generator.generate();
     }
 

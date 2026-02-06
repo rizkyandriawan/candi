@@ -1,23 +1,6 @@
 package candi.compiler.lexer;
 
 public enum TokenType {
-    // Header directives
-    PAGE,           // @page "/path"
-    INJECT,         // @inject Type name
-    INIT,           // @init
-    ACTION,         // @action METHOD
-    FRAGMENT_DEF,   // @fragment "name"
-    LAYOUT,         // @layout "name"
-    SLOT_FILL,      // @slot name
-
-    // Directive arguments
-    STRING_LITERAL, // "..."
-    IDENTIFIER,     // variable/type names
-    HTTP_METHOD,    // POST, PUT, DELETE, PATCH
-
-    // Code blocks
-    CODE_BLOCK,     // { ... } (brace-matched, opaque content)
-
     // Body content
     HTML,           // raw HTML text
 
@@ -30,9 +13,14 @@ public enum TokenType {
     KEYWORD_FOR,    // for
     KEYWORD_IN,     // in
     KEYWORD_RAW,    // raw
-    KEYWORD_FRAGMENT, // fragment (call)
+    KEYWORD_INCLUDE,   // include
     KEYWORD_COMPONENT, // component
-    KEYWORD_SLOT,   // slot (render)
+    KEYWORD_CONTENT,   // content (layout placeholder)
+
+    // Literals
+    STRING_LITERAL, // "..."
+    IDENTIFIER,     // variable/type names
+    NUMBER,         // numeric literal
 
     // Expression tokens
     DOT,            // .
@@ -40,7 +28,7 @@ public enum TokenType {
     LPAREN,         // (
     RPAREN,         // )
     COMMA,          // ,
-    EQUALS_SIGN,    // = (for component param=val)
+    EQUALS_SIGN,    // = (for param=val)
     EQ,             // ==
     NEQ,            // !=
     LT,             // <
@@ -50,7 +38,6 @@ public enum TokenType {
     AND,            // &&
     OR,             // ||
     NOT,            // !
-    NUMBER,         // numeric literal
     TRUE,           // true
     FALSE,          // false
 

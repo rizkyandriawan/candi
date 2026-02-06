@@ -7,16 +7,17 @@ import org.springframework.web.context.WebApplicationContext;
 import candi.runtime.*;
 
 /**
- * Hand-compiled page simulating compiler output for:
+ * Hand-compiled page simulating v2 compiler output for:
  *
- * @page "/about"
- * @layout "base"
- *
- * @slot title { About Us }
- * @slot content {
- *   <h1>About Candi</h1>
- *   <p>An HTML-first framework for Spring Boot.</p>
+ * @Page("/about")
+ * @Layout("base")
+ * public class AboutPage {
  * }
+ *
+ * <template>
+ * <h1>About Candi</h1>
+ * <p>An HTML-first framework for Spring Boot.</p>
+ * </template>
  */
 @Component
 @Scope(WebApplicationContext.SCOPE_REQUEST)
@@ -27,20 +28,11 @@ public class About__Page implements CandiPage {
     private CandiLayout baseLayout;
 
     @Override
-    public ActionResult handleAction(String method) {
-        return ActionResult.methodNotAllowed();
-    }
-
-    @Override
     public void render(HtmlOutput out) {
         baseLayout.render(out, (slotName, slotOut) -> {
-            switch (slotName) {
-                case "title" -> slotOut.append("About Us");
-                case "content" -> {
-                    slotOut.append("<h1>About Candi</h1>\n");
-                    slotOut.append("<p>An HTML-first framework for Spring Boot.</p>");
-                }
-                default -> {}
+            if ("content".equals(slotName)) {
+                slotOut.append("<h1>About Candi</h1>\n");
+                slotOut.append("<p>An HTML-first framework for Spring Boot.</p>");
             }
         });
     }
