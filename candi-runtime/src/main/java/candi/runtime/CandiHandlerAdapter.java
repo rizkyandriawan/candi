@@ -120,21 +120,27 @@ public class CandiHandlerAdapter implements HandlerAdapter {
             return ActionResult.methodNotAllowed();
         }
 
-        for (Method m : page.getClass().getDeclaredMethods()) {
-            if (m.isAnnotationPresent(annotationClass)) {
-                try {
-                    m.setAccessible(true);
-                    Object result = m.invoke(page);
-                    if (result instanceof ActionResult actionResult) {
-                        return actionResult;
+        // Walk class hierarchy to find action methods (supports subclass pattern
+        // where @Post/@Delete methods are on the parent class)
+        Class<?> current = page.getClass();
+        while (current != null && current != Object.class) {
+            for (Method m : current.getDeclaredMethods()) {
+                if (m.isAnnotationPresent(annotationClass)) {
+                    try {
+                        m.setAccessible(true);
+                        Object result = m.invoke(page);
+                        if (result instanceof ActionResult actionResult) {
+                            return actionResult;
+                        }
+                        // If the method returns void or non-ActionResult, fall through to render
+                        return ActionResult.render();
+                    } catch (Exception e) {
+                        log.error("Error invoking action method {} on {}", m.getName(), page.getClass().getName(), e);
+                        throw new RuntimeException("Action method invocation failed", e);
                     }
-                    // If the method returns void or non-ActionResult, fall through to render
-                    return ActionResult.render();
-                } catch (Exception e) {
-                    log.error("Error invoking action method {} on {}", m.getName(), page.getClass().getName(), e);
-                    throw new RuntimeException("Action method invocation failed", e);
                 }
             }
+            current = current.getSuperclass();
         }
 
         return ActionResult.methodNotAllowed();

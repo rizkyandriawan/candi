@@ -50,10 +50,10 @@ public class CandiCompileMojo extends AbstractMojo {
             return;
         }
 
-        // Find all .jhtml files (and legacy .page.html)
+        // Find all Candi files (.java, .jhtml, legacy .page.html)
         List<Path> candiFiles = findCandiFiles(sourcePath);
         if (candiFiles.isEmpty()) {
-            getLog().info("No .jhtml files found in " + sourcePath);
+            getLog().info("No Candi files found in " + sourcePath);
             return;
         }
 
@@ -104,8 +104,9 @@ public class CandiCompileMojo extends AbstractMojo {
                 @Override
                 public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
                     String name = file.toString();
-                    if (name.endsWith(".jhtml") || name.endsWith(".page.html") ||
-                        name.endsWith(".layout.html") || name.endsWith(".component.html")) {
+                    if (name.endsWith(".java") || name.endsWith(".jhtml") ||
+                        name.endsWith(".page.html") || name.endsWith(".layout.html") ||
+                        name.endsWith(".component.html")) {
                         result.add(file);
                     }
                     return FileVisitResult.CONTINUE;

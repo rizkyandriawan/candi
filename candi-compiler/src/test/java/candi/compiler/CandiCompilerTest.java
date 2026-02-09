@@ -501,4 +501,86 @@ class CandiCompilerTest {
         System.out.println("=== Generated Layout ===");
         System.out.println(java);
     }
+
+    // ========== @Template annotation format ==========
+
+    @Test
+    void testTemplateAnnotation() {
+        String source = """
+                @Page("/hello")
+                @Template(\"""
+                <h1>Hello World</h1>
+                \""")
+                public class HelloPage {
+                }
+                """;
+
+        String java = compiler.compile(source, "HelloPage.java", "pages", "HelloPage");
+
+        assertTrue(java.contains("class HelloPage implements CandiPage"));
+        assertTrue(java.contains("@CandiRoute(path = \"/hello\""));
+        assertTrue(java.contains("out.append(\"<h1>Hello World</h1>"));
+        assertFalse(java.contains("@Template"));
+    }
+
+    @Test
+    void testTemplateAnnotationWithExpressions() {
+        String source = """
+                @Page("/greet")
+                @Template(\"""
+                <h1>{{ name }}</h1>
+                <p>{{ message }}</p>
+                \""")
+                public class GreetPage {
+                    private String name;
+                    private String message;
+                }
+                """;
+
+        String java = compiler.compile(source, "GreetPage.java", "pages", "GreetPage");
+
+        assertTrue(java.contains("class GreetPage implements CandiPage"));
+        assertTrue(java.contains("out.appendEscaped(String.valueOf(this.name));"));
+        assertTrue(java.contains("out.appendEscaped(String.valueOf(this.message));"));
+        assertFalse(java.contains("@Template"));
+    }
+
+    @Test
+    void testTemplateAnnotationLayout() {
+        String source = """
+                @Layout
+                @Template(\"""
+                <html><body>{{ content }}</body></html>
+                \""")
+                public class BaseLayout {
+                }
+                """;
+
+        String java = compiler.compile(source, "BaseLayout.java", "layouts", "BaseLayout");
+
+        assertTrue(java.contains("implements CandiLayout"));
+        assertTrue(java.contains("@Component(\"baseLayout\")"));
+        assertTrue(java.contains("slots.renderSlot(\"content\", out)"));
+        assertFalse(java.contains("@Template"));
+    }
+
+    @Test
+    void testTemplateAnnotationWidget() {
+        String source = """
+                @Widget
+                @Template(\"""
+                <div class="alert">{{ message }}</div>
+                \""")
+                public class AlertWidget {
+                    private String message;
+                }
+                """;
+
+        String java = compiler.compile(source, "AlertWidget.java", "widgets", "AlertWidget");
+
+        assertTrue(java.contains("implements CandiComponent"));
+        assertTrue(java.contains("@Component(\"AlertWidget__Widget\")"));
+        assertTrue(java.contains("out.appendEscaped(String.valueOf(this.message));"));
+        assertFalse(java.contains("@Template"));
+    }
 }

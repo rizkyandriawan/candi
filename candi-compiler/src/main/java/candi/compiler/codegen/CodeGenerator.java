@@ -125,7 +125,8 @@ public class CodeGenerator {
 
             // Skip user annotations that we handle ourselves
             if (trimmed.startsWith("@Page(") || trimmed.startsWith("@Layout(") ||
-                trimmed.startsWith("@Layout") || trimmed.startsWith("@Widget")) continue;
+                trimmed.startsWith("@Layout") || trimmed.startsWith("@Widget") ||
+                trimmed.startsWith("@Template")) continue;
 
             // Transform class declaration
             if (!classStarted && trimmed.contains("class " + page.className())) {
@@ -209,7 +210,7 @@ public class CodeGenerator {
             String trimmed = srcLine.trim();
 
             if (trimmed.startsWith("package ") || trimmed.startsWith("import ")) continue;
-            if (trimmed.startsWith("@Layout")) continue;
+            if (trimmed.startsWith("@Layout") || trimmed.startsWith("@Template")) continue;
 
             if (!classStarted && trimmed.contains("class " + page.className())) {
                 String modifiedLine = trimmed;
@@ -266,7 +267,7 @@ public class CodeGenerator {
             String trimmed = srcLine.trim();
 
             if (trimmed.startsWith("package ") || trimmed.startsWith("import ")) continue;
-            if (trimmed.startsWith("@Widget")) continue;
+            if (trimmed.startsWith("@Widget") || trimmed.startsWith("@Template")) continue;
 
             if (!classStarted && trimmed.contains("class " + page.className())) {
                 String modifiedLine = trimmed;

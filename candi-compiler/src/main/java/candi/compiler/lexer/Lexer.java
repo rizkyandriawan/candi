@@ -63,12 +63,51 @@ public class Lexer {
     }
 
     /**
+     * Tokenize template content directly (no Java/template splitting).
+     * Used by the annotation processor which already has the template string
+     * extracted from {@code @Template}.
+     *
+     * @param template the raw template content
+     * @param fileName the source file name (for error reporting)
+     * @return list of tokens
+     */
+    public static List<Token> tokenizeTemplate(String template, String fileName) {
+        Lexer lexer = new Lexer(template, fileName);
+        // Set template source directly — no splitting needed
+        lexer.javaSource = "";
+        lexer.templateSource = template;
+        lexer.templateStartLine = 1;
+
+        lexer.pos = 0;
+        lexer.line = 1;
+        lexer.col = 1;
+
+        while (lexer.pos < lexer.templateSource.length()) {
+            lexer.lexBody();
+        }
+
+        lexer.tokens.add(new Token(TokenType.EOF, "", lexer.loc()));
+        return lexer.tokens;
+    }
+
+    /**
      * Split the source into Java section and template section.
-     * Everything before &lt;template&gt; is Java source.
-     * Everything between &lt;template&gt; and &lt;/template&gt; is template content.
-     * If there's no &lt;template&gt; tag, the entire source is treated as template (body-only).
+     *
+     * Supports two formats:
+     * 1. @Template("""...""") annotation — Java text block (preferred)
+     * 2. &lt;template&gt;...&lt;/template&gt; block after class (legacy)
+     *
+     * For @Template: the annotation is stripped from javaSource, template extracted from text block.
+     * For &lt;template&gt;: everything before the tag is javaSource, content between tags is template.
+     * If neither found, entire source is treated as template (body-only include file).
      */
     private void splitSource() {
+        // Try @Template("""...""") first
+        if (splitFromAnnotation()) {
+            return;
+        }
+
+        // Fall back to <template> block
         int templateOpen = source.indexOf("<template>");
         if (templateOpen == -1) {
             // Body-only file (no Java class, just template — e.g. include files)
@@ -106,6 +145,105 @@ public class Lexer {
         if (templateSource.endsWith("\n")) {
             templateSource = templateSource.substring(0, templateSource.length() - 1);
         }
+    }
+
+    /**
+     * Try to extract template from @Template("""...""") annotation.
+     * Returns true if found and extracted successfully.
+     */
+    private boolean splitFromAnnotation() {
+        // Find @Template( with optional whitespace
+        int atTemplate = source.indexOf("@Template(");
+        if (atTemplate == -1) {
+            atTemplate = source.indexOf("@Template (");
+            if (atTemplate == -1) return false;
+        }
+
+        // Find the text block opening """
+        int parenOpen = source.indexOf('(', atTemplate);
+        int textBlockStart = source.indexOf("\"\"\"", parenOpen);
+        if (textBlockStart == -1) return false;
+
+        // Text block content starts after """ and the first newline
+        int contentStart = textBlockStart + 3;
+        if (contentStart < source.length() && source.charAt(contentStart) == '\n') {
+            contentStart++;
+        }
+
+        // Find closing """ (scan for """ that's not escaped)
+        int textBlockEnd = findClosingTextBlock(source, contentStart);
+        if (textBlockEnd == -1) return false;
+
+        // Find the closing ) after """
+        int parenClose = source.indexOf(')', textBlockEnd + 3);
+        if (parenClose == -1) return false;
+
+        // Extract template content and strip common leading whitespace (text block semantics)
+        templateSource = stripTextBlockIndent(source.substring(contentStart, textBlockEnd));
+
+        // Trim trailing newline
+        if (templateSource.endsWith("\n")) {
+            templateSource = templateSource.substring(0, templateSource.length() - 1);
+        }
+
+        // Count lines before template content for error reporting
+        templateStartLine = 1;
+        for (int i = 0; i < contentStart; i++) {
+            if (source.charAt(i) == '\n') templateStartLine++;
+        }
+
+        // Build javaSource: everything except the @Template(...) annotation
+        javaSource = (source.substring(0, atTemplate) + source.substring(parenClose + 1)).trim();
+
+        return true;
+    }
+
+    /**
+     * Find the closing """ of a text block, starting from the content.
+     */
+    private static int findClosingTextBlock(String s, int from) {
+        int i = from;
+        while (i + 2 < s.length()) {
+            if (s.charAt(i) == '"' && s.charAt(i + 1) == '"' && s.charAt(i + 2) == '"') {
+                // Make sure it's not escaped
+                int backslashes = 0;
+                int j = i - 1;
+                while (j >= 0 && s.charAt(j) == '\\') { backslashes++; j--; }
+                if (backslashes % 2 == 0) {
+                    return i;
+                }
+            }
+            i++;
+        }
+        return -1;
+    }
+
+    /**
+     * Strip common leading whitespace from text block content (mimics Java text block behavior).
+     */
+    private static String stripTextBlockIndent(String content) {
+        String[] lines = content.split("\n", -1);
+        // Find minimum indent (ignoring blank lines)
+        int minIndent = Integer.MAX_VALUE;
+        for (String l : lines) {
+            if (l.isBlank()) continue;
+            int indent = 0;
+            while (indent < l.length() && l.charAt(indent) == ' ') indent++;
+            if (indent < minIndent) minIndent = indent;
+        }
+        if (minIndent == Integer.MAX_VALUE) minIndent = 0;
+
+        // Strip common indent
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < lines.length; i++) {
+            if (i > 0) sb.append('\n');
+            if (lines[i].length() > minIndent) {
+                sb.append(lines[i].substring(minIndent));
+            } else if (!lines[i].isBlank()) {
+                sb.append(lines[i]);
+            }
+        }
+        return sb.toString();
     }
 
     // ========== BODY LEXING ==========

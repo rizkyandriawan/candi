@@ -15,6 +15,7 @@
     <modules>
         <module>candi-compiler</module>
         <module>candi-runtime</module>
+        <module>candi-processor</module>
         <module>candi-dev-tools</module>
         <module>candi-maven-plugin</module>
         <module>candi-demo</module>

@@ -104,7 +104,9 @@ public class CandiCompiler {
         String name = fileName;
 
         // Strip known extensions
-        if (name.endsWith(".jhtml")) {
+        if (name.endsWith(".java")) {
+            name = name.substring(0, name.length() - ".java".length());
+        } else if (name.endsWith(".jhtml")) {
             name = name.substring(0, name.length() - ".jhtml".length());
         } else if (name.endsWith(".page.html")) {
             name = name.substring(0, name.length() - ".page.html".length());

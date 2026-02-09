@@ -1,30 +1,14 @@
-# Candi
+<p align="center">
+  <img src="logo.png" alt="Candi" width="160">
+</p>
 
-**Fullstack web framework on Spring Boot. One file per page. Compiled to bytecode.**
+<h1 align="center">Candi</h1>
 
-> *Named after the ancient stone temples of Java — built to last, built by people who shipped.*
+<p align="center"><strong>Fullstack web framework on Spring Boot. One file per page. Compiled to bytecode.</strong></p>
 
-```
-┌──────────────────────────────────────────────────────────┐
-│                       .jhtml                              │
-│                                                          │
-│   ┌─────────────────────────┐  ┌──────────────────────┐  │
-│   │  Java Class             │  │  <template>          │  │
-│   │  @Page("/posts")        │  │  <h1>{{ title }}</h1> │  │
-│   │  @Autowired Service s   │  │  {{ for p in posts }}│  │
-│   │  init() { ... }         │  │    <p>{{ p.title }}</p>│ │
-│   │  @Post create() { }    │  │  {{ end }}           │  │
-│   └─────────────────────────┘  └──────────────────────┘  │
-│              │                          │                 │
-│              ▼                          ▼                 │
-│        Java bytecode            HTML renderer             │
-│              │                          │                 │
-│              └──────────┬───────────────┘                 │
-│                         ▼                                 │
-│                   Spring Boot                             │
-│              (request-scoped bean)                        │
-└──────────────────────────────────────────────────────────┘
-```
+<p align="center"><em>Named after the ancient stone temples of Java — built to last, built by people who shipped.</em></p>
+
+---
 
 ## The Problem
 
@@ -36,31 +20,13 @@
 
 ## The Approach
 
-Candi brings back PHP's fullstack-in-one-file workflow, built on Spring Boot. The top half is a real Java class with fields, methods, and annotations. The bottom half is an HTML template. The compiler reads both, then generates a single Spring bean with a `render()` method.
+Candi brings back PHP's fullstack-in-one-file workflow, built on Spring Boot. Each page is a Java class with a `@Template` annotation. The annotation processor generates a subclass with `render()` at compile time — no plugins, no build tool config.
 
-All Candi files use the `.jhtml` extension. The compiler determines the file type from class annotations — not from the filename.
+Works with Maven, Gradle, Bazel — anything that runs `javac`.
 
-```html
+```java
 @Page("/posts")
-public class PostsPage {
-
-    @Autowired
-    private PostService posts;
-
-    private List<Post> allPosts;
-
-    public void init() {
-        allPosts = posts.findAll();
-    }
-
-    @Post
-    public ActionResult create() {
-        posts.create(ctx.form("title"), ctx.form("body"));
-        return ActionResult.redirect("/posts");
-    }
-}
-
-<template>
+@Template("""
 <h1>All Posts</h1>
 {{ for post in allPosts }}
   <article>
@@ -78,14 +44,44 @@ public class PostsPage {
   <textarea name="body"></textarea>
   <button>Publish</button>
 </form>
-</template>
+""")
+public class PostsPage {
+
+    @Autowired
+    private PostService posts;
+
+    private List<Post> allPosts;
+
+    public void init() {
+        allPosts = posts.findAll();
+    }
+
+    @Post
+    public ActionResult create() {
+        posts.create(ctx.form("title"), ctx.form("body"));
+        return ActionResult.redirect("/posts");
+    }
+}
 ```
 
 One file. Route, injection, data loading, form handling, HTML — all in one place. The Java part is real Java with full IDE support. Compiled to bytecode at build time.
 
-## File Types
+## How It Works
 
-Every Candi file is a `.jhtml` file. The compiler reads the class-level annotation to determine the type:
+```
+                  javac (annotation processor)
+                  ┌──────────────────────────┐
+ PostsPage.java──>│ @Page + @Template found   │──> PostsPage_Candi.java
+                  │ Lexer → Parser → Codegen  │    extends PostsPage
+                  └──────────────────────────┘    implements CandiPage
+                                                   + @Component
+                                                   + @CandiRoute
+                                                   + render()
+```
+
+Your class stays untouched. The processor generates a `_Candi` subclass with Spring annotations and a compiled `render()` method. Spring registers the generated class — your class is just the parent.
+
+## File Types
 
 | Annotation | Type | What it does |
 |------------|------|--------------|
@@ -93,19 +89,23 @@ Every Candi file is a `.jhtml` file. The compiler reads the class-level annotati
 | `@Layout` | Layout | Singleton wrapper template with a `{{ content }}` slot |
 | `@Widget` | Widget | Prototype-scoped reusable UI component with parameters |
 
-No annotation → compile error. One annotation per file. The filename is just a name — the annotation is the truth.
-
 ### Pages
 
-A page handles an HTTP route. It gets a fresh instance per request (request-scoped), runs `init()` for data loading, and dispatches action methods for form submissions.
-
-```html
-@Page("/posts/{id}")
-@Layout("base")
+```java
+@Page(value = "/post/{id}", layout = "base")
+@Template("""
+<article>
+  <h1>{{ post.title }}</h1>
+  <div>{{ raw post.body }}</div>
+</article>
+<form method="POST" action="?_method=DELETE">
+  <button>Delete</button>
+</form>
+""")
 public class PostViewPage {
 
-    @Autowired
-    private PostService posts;
+    @Autowired private PostService posts;
+    @Autowired private RequestContext ctx;
 
     private Post post;
 
@@ -119,28 +119,13 @@ public class PostViewPage {
         return ActionResult.redirect("/posts");
     }
 }
-
-<template>
-<article>
-  <h1>{{ post.title }}</h1>
-  <div>{{ raw post.body }}</div>
-</article>
-<form method="POST" action="?_method=DELETE">
-  <button>Delete</button>
-</form>
-</template>
 ```
 
 ### Layouts
 
-A layout wraps pages. It declares `@Layout` (no parameter) on the class. Pages reference it by name with `@Layout("name")`. The `{{ content }}` placeholder is where the page body goes.
-
-```html
+```java
 @Layout
-public class BaseLayout {
-}
-
-<template>
+@Template("""
 <!DOCTYPE html>
 <html>
 <head><title>My App</title></head>
@@ -150,61 +135,27 @@ public class BaseLayout {
   <footer>Powered by Candi</footer>
 </body>
 </html>
-</template>
+""")
+public class BaseLayout {
+}
 ```
-
-The layout name defaults to the class name minus `Layout` suffix, lowercased. `BaseLayout` → `"base"`. Pages opt in with `@Layout("base")`.
 
 ### Widgets
 
-A widget is a reusable UI element with parameters. It declares `@Widget` on the class. Parameters are private fields — the caller sets them via key-value pairs.
-
-```html
+```java
 @Widget
+@Template("""
+<div class="alert alert-{{ type }}">{{ message }}</div>
+""")
 public class AlertWidget {
     private String type = "info";
     private String message;
 }
-
-<template>
-<div class="alert alert-{{ type }}">{{ message }}</div>
-</template>
 ```
 
 Used in any page or layout: `{{ widget "alert" type="error" message="Oops" }}`
 
-Widgets are prototype-scoped — each `{{ widget }}` call gets a fresh instance with its own parameter values.
-
-## Java Class
-
-The top section is a standard Java class. The compiler preserves it and adds Spring annotations + a `render()` method.
-
-| Annotation | Purpose |
-|------------|---------|
-| `@Page("/path/{id}")` | Route binding with path params |
-| `@Layout("name")` | On a page: wrap in a layout. Alone on a class: declare a layout. |
-| `@Widget` | Declare a reusable component |
-| `@Autowired` | Spring dependency injection |
-| `@Post` | Handle POST requests |
-| `@Put` | Handle PUT requests |
-| `@Delete` | Handle DELETE requests |
-| `@Patch` | Handle PATCH requests |
-
-The `init()` method runs once per request before rendering. Action methods (`@Post`, `@Delete`, etc.) return `ActionResult` for redirects or re-renders.
-
-## Generated Code
-
-The compiler produces different Spring beans based on annotation:
-
-| Source annotation | Generated class | Interface | Spring scope | Bean name |
-|-------------------|----------------|-----------|-------------|-----------|
-| `@Page("/path")` | `PostsPage__Page` | `CandiPage` | `request` | auto (class name) |
-| `@Layout` | `Base__Layout` | `CandiLayout` | `singleton` | `"baseLayout"` |
-| `@Widget` | `Alert__Component` | `CandiComponent` | `prototype` | `"Alert__Component"` |
-
 ## Template Expressions
-
-The `<template>` section uses Go-style `{{ }}` syntax:
 
 | Syntax | Output |
 |--------|--------|
@@ -216,7 +167,6 @@ The `<template>` section uses Go-style `{{ }}` syntax:
 | `{{ if a }}...{{ else }}...{{ end }}` | If/else |
 | `{{ if a }}...{{ else if b }}...{{ end }}` | Else-if chain |
 | `{{ for item in list }}...{{ end }}` | Loop |
-| `{{ include "header" title="Home" }}` | Include HTML partial |
 | `{{ widget "card" title="Hello" }}` | Render widget |
 | `{{ content }}` | Layout content placeholder |
 
@@ -225,40 +175,121 @@ The `<template>` section uses Go-style `{{ }}` syntax:
 **Requirements:** Java 21+, Maven 3.9+
 
 ```xml
-<!-- pom.xml -->
 <dependency>
   <groupId>candi</groupId>
   <artifactId>candi-spring-boot-starter</artifactId>
-  <version>0.1.0-SNAPSHOT</version>
+  <version>0.1.0</version>
 </dependency>
-
-<plugin>
+<dependency>
   <groupId>candi</groupId>
-  <artifactId>candi-maven-plugin</artifactId>
-  <version>0.1.0-SNAPSHOT</version>
-  <executions>
-    <execution>
-      <goals><goal>compile</goal></goals>
-    </execution>
-  </executions>
-</plugin>
+  <artifactId>candi-processor</artifactId>
+  <version>0.1.0</version>
+  <scope>provided</scope>
+</dependency>
 ```
 
-Create `src/main/candi/hello.jhtml`:
+That's it. No plugin config. The annotation processor runs automatically during `javac`.
 
-```html
+**Gradle:**
+
+```groovy
+implementation 'candi:candi-spring-boot-starter:0.1.0'
+annotationProcessor 'candi:candi-processor:0.1.0'
+```
+
+Create `src/main/java/pages/HelloPage.java`:
+
+```java
 @Page("/hello")
+@Template("""
+<h1>Hello from Candi</h1>
+""")
 public class HelloPage {
 }
-
-<template>
-<h1>Hello from Candi</h1>
-</template>
 ```
 
 ```bash
 mvn spring-boot:run
 # Open http://localhost:8080/hello
+```
+
+## Benchmark: Candi vs React + NestJS
+
+Same app. Same features. A blog with list, view, create, edit, delete.
+
+| Metric | Candi | React + NestJS |
+|--------|-------|----------------|
+| **Source files** | 10 | 20 |
+| **Lines of code** | 374 | 706 |
+| **Tokens (cl100k)** | 3,573 | 5,097 |
+| **Config files** | 1 (pom.xml) | 5 (2x package.json, 2x tsconfig, vite.config) |
+| **Config tokens** | 549 | 1,131 |
+| **Repos** | 1 | 2 (or monorepo) |
+| **Build systems** | 1 (Maven) | 2 (Maven/Gradle + Vite) |
+| **Runtime processes** | 1 (Spring Boot) | 2 (NestJS + Vite/Nginx) |
+| **Languages** | 1 (Java) | 2 (TypeScript x2) |
+| **API layer needed** | No | Yes (REST) |
+
+<details>
+<summary>Token breakdown</summary>
+
+**Candi (aksra)**
+
+| File | Tokens |
+|------|--------|
+| BaseLayout.java | 784 |
+| BlogService.java | 512 |
+| PostPage.java | 476 |
+| EditPostPage.java | 419 |
+| NewPostPage.java | 396 |
+| IndexPage.java | 362 |
+| BlogPost.java | 351 |
+| AlertWidget.java | 189 |
+| AksraApplication.java | 63 |
+| application.properties | 21 |
+| **Total** | **3,573** |
+
+**React + NestJS**
+
+| File | Tokens |
+|------|--------|
+| App.css | 636 |
+| PostPage.tsx | 573 |
+| IndexPage.tsx | 504 |
+| blog.service.ts | 502 |
+| EditPostPage.tsx | 478 |
+| NewPostPage.tsx | 391 |
+| api.ts | 355 |
+| blog.controller.ts | 329 |
+| package.json (fe) | 185 |
+| package.json (be) | 174 |
+| tsconfig.json (be) | 151 |
+| tsconfig.json (fe) | 155 |
+| App.tsx | 145 |
+| Layout.tsx | 139 |
+| index.html | 93 |
+| main.tsx | 71 |
+| vite.config.ts | 63 |
+| main.ts | 65 |
+| app.module.ts | 52 |
+| blog-post.interface.ts | 36 |
+| **Total** | **5,097** |
+
+</details>
+
+The Candi version has **30% fewer tokens**, half the files, one language, one process, and zero API boilerplate. The gap widens as the app grows — every new page in React+API needs a route, a component, an API endpoint, and a fetch call. In Candi, it's one file.
+
+## Project Structure
+
+```
+candi/
+├── candi-compiler/             Lexer, parser, code generator
+├── candi-runtime/              CandiPage interface, handler mapping, request lifecycle
+├── candi-processor/            JSR 269 annotation processor (generates _Candi subclasses)
+├── candi-dev-tools/            FileWatcher, IncrementalCompiler, HotReloadManager
+├── candi-maven-plugin/         Maven goals: candi:compile, candi:dev (backward compat)
+├── candi-spring-boot-starter/  Auto-configuration, GraalVM hints
+└── candi-demo/                 Integration test app
 ```
 
 ## Dev Mode
@@ -269,92 +300,21 @@ Hot reload with live browser refresh. Edit, save, see changes instantly.
 mvn candi:dev
 ```
 
-Or via property:
-
-```properties
-candi.dev=true
-```
-
-File watcher detects changes → recompiles → hot-swaps class → SSE pushes reload to browser. No server restart.
-
-## Project Structure
-
-```
-src/main/candi/
-├── pages/
-│   ├── index.jhtml           @Page("/")
-│   ├── posts.jhtml           @Page("/posts")
-│   └── post-view.jhtml       @Page("/post/{id}")
-├── layouts/
-│   └── base.jhtml            @Layout
-├── widgets/
-│   ├── alert.jhtml           @Widget
-│   └── card.jhtml            @Widget
-└── includes/
-    └── header.html           plain HTML partial
-```
-
-Directory names are convention — `pages/`, `layouts/`, `widgets/` help organize but the compiler doesn't require them. The annotation determines the type.
-
-### Framework modules
-
-```
-candi/
-├── candi-compiler/             Lexer, parser, code generator (zero Spring deps)
-├── candi-runtime/              CandiPage interface, handler mapping, request lifecycle
-├── candi-dev-tools/            FileWatcher, IncrementalCompiler, HotReloadManager
-├── candi-maven-plugin/         Maven goals: candi:compile, candi:dev
-├── candi-spring-boot-starter/  Auto-configuration, GraalVM hints
-└── candi-demo/                 Integration test app with example pages
-```
+File watcher detects changes, recompiles, hot-swaps class, pushes reload to browser. No server restart.
 
 ## Features
 
 | Feature | Detail |
 |---------|--------|
 | Compile-time safety | Template errors caught at build, not runtime |
-| Real Java | Fields, methods, annotations — full IDE support in the class section |
+| Zero config | Annotation processor runs during javac — no plugin needed |
+| Real Java | Fields, methods, annotations — full IDE support |
 | Spring Boot native | Use any Spring service, repository, component via `@Autowired` |
-| Annotation-based typing | `@Page`, `@Layout`, `@Widget` — one extension, one compiler |
-| Layouts & widgets | `@Layout` + `{{ widget }}` + `{{ include }}` for reuse |
+| Layouts & widgets | `@Layout` + `{{ widget }}` for reuse |
 | Null-safe expressions | `?.` compiles to Java null checks |
 | Hot reload | SSE-based live reload, no server restart |
 | GraalVM compatible | Runtime hints included for native image |
-
-## IDE Support
-
-IntelliJ plugin with syntax highlighting, code completion, Ctrl+click navigation, and run configuration.
-
-```bash
-cd candi-intellij
-./gradlew buildPlugin
-# Install from build/distributions/candi-intellij-0.1.0.zip
-```
-
-## Intentional Trade-offs
-
-| Choice | Reason |
-|--------|--------|
-| Single `.jhtml` extension | One file type, annotation determines behavior — no filename conventions to learn |
-| Maven only (no Gradle) | Spring Boot convention, simpler plugin |
-| No JavaScript runtime | Pages render server-side, HTMX for interactivity |
-| Single-file pages | Simplicity over component granularity |
-| Go-style `{{ }}` syntax | Familiar, unambiguous, easy to parse |
-| No JSP/Thymeleaf interop | Clean break, no legacy baggage |
-
-## Use Cases
-
-**Good fit:**
-- Internal tools, admin panels
-- Content sites, blogs, documentation
-- CRUD apps, dashboards
-- Startups shipping MVPs
-- Any project where "just make a web page" is the goal
-
-**Not a fit:**
-- Heavy client-side interactivity (use React/Vue)
-- Real-time apps (use WebSocket frameworks)
-- Microservice API-only backends (no HTML needed)
+| Build tool agnostic | Works with Maven, Gradle, Bazel — anything that runs javac |
 
 ## License
 

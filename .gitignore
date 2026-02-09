@@ -16,3 +16,7 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Design/planning docs (not part of the project)
+DESIGN.md
+roundtable-*.md
