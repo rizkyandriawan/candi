@@ -292,6 +292,19 @@ candi/
 └── candi-demo/                 Integration test app
 ```
 
+## Interceptors
+
+Candi uses its own `CandiHandlerMapping`, which means standard `WebMvcConfigurer.addInterceptors()` does **not** apply to Candi page requests. To add interceptors that run on Candi pages, use the `CandiHandlerMapping` API:
+
+```java
+@Autowired
+private CandiHandlerMapping candiHandlerMapping;
+
+candiHandlerMapping.addCandiInterceptor(myInterceptor);
+```
+
+The Candi auth plugins register their interceptors this way automatically via auto-configuration.
+
 ## Dev Mode
 
 Hot reload with live browser refresh. Edit, save, see changes instantly.
