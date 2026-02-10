@@ -4,10 +4,13 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.Ordered;
 import org.springframework.stereotype.Component;
+import org.springframework.web.servlet.HandlerExecutionChain;
+import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.web.servlet.HandlerMapping;
 import org.springframework.web.servlet.handler.AbstractHandlerMapping;
 
-import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Spring HandlerMapping that resolves requests to Candi page beans via PageRegistry.
@@ -19,9 +22,20 @@ public class CandiHandlerMapping extends AbstractHandlerMapping {
     @Autowired
     private PageRegistry pageRegistry;
 
+    private final List<HandlerInterceptor> candiInterceptors = new ArrayList<>();
+
     public CandiHandlerMapping() {
         // Run after Spring's default handler mappings
         setOrder(Ordered.LOWEST_PRECEDENCE - 1);
+    }
+
+    /**
+     * Add a HandlerInterceptor to this mapping's interceptor chain.
+     * Called by auto-configurations (e.g. candi-auth-core) to register
+     * interceptors that should apply to Candi page requests.
+     */
+    public void addCandiInterceptor(HandlerInterceptor interceptor) {
+        candiInterceptors.add(interceptor);
     }
 
     @Override
@@ -39,6 +53,15 @@ public class CandiHandlerMapping extends AbstractHandlerMapping {
         request.setAttribute(HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE, result.pathVariables());
 
         return new CandiPageHandler(result.beanName());
+    }
+
+    @Override
+    protected HandlerExecutionChain getHandlerExecutionChain(Object handler, HttpServletRequest request) {
+        HandlerExecutionChain chain = super.getHandlerExecutionChain(handler, request);
+        for (HandlerInterceptor interceptor : candiInterceptors) {
+            chain.addInterceptor(interceptor);
+        }
+        return chain;
     }
 
     /**
