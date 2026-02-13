@@ -278,6 +278,24 @@ class LexerTest {
     }
 
     @Test
+    void testFragmentExpression() {
+        String source = "{{ fragment \"post-list\" }}<ul>items</ul>{{ end }}";
+        Lexer lexer = new Lexer(source, "test.jhtml");
+        List<Token> tokens = lexer.tokenize();
+
+        assertEquals(TokenType.EXPR_START, tokens.get(0).type());
+        assertEquals(TokenType.KEYWORD_FRAGMENT, tokens.get(1).type());
+        assertEquals(TokenType.STRING_LITERAL, tokens.get(2).type());
+        assertEquals("post-list", tokens.get(2).value());
+        assertEquals(TokenType.EXPR_END, tokens.get(3).type());
+        assertEquals(TokenType.HTML, tokens.get(4).type());
+        assertEquals("<ul>items</ul>", tokens.get(4).value());
+        assertEquals(TokenType.EXPR_START, tokens.get(5).type());
+        assertEquals(TokenType.KEYWORD_END, tokens.get(6).type());
+        assertEquals(TokenType.EXPR_END, tokens.get(7).type());
+    }
+
+    @Test
     void testIncludeSimple() {
         String source = "{{ include \"footer\" }}";
         Lexer lexer = new Lexer(source, "test.page.html");

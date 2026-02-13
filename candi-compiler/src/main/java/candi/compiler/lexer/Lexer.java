@@ -365,6 +365,13 @@ public class Lexer {
                 // Optional params: key=value
                 lexKeyValueParams();
             }
+            case "fragment" -> {
+                advance("fragment".length());
+                tokens.add(new Token(TokenType.KEYWORD_FRAGMENT, "fragment", start));
+                skipWhitespace();
+                // Fragment name as string literal
+                tokens.add(readStringLiteral());
+            }
             case "content" -> {
                 advance("content".length());
                 tokens.add(new Token(TokenType.KEYWORD_CONTENT, "content", start));

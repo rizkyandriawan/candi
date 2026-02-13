@@ -153,6 +153,93 @@ class SubclassCodeGeneratorTest {
         assertTrue(java.contains("this.getPost() == null ? null : this.getPost().getTitle()"));
     }
 
+    // ========== FRAGMENT Tests ==========
+
+    @Test
+    void testPageWithFragment() {
+        BodyNode body = parseTemplate("<h1>Posts</h1>{{ fragment \"post-list\" }}<ul><li>item</li></ul>{{ end }}");
+
+        String java = generate(new SubclassCodeGenerator.SubclassInput(
+                "PostsPage", "pages", JavaAnalyzer.FileType.PAGE,
+                "/posts", null,
+                Set.of(), Map.of(), Set.of(),
+                body));
+
+        // Inline rendering in render()
+        assertTrue(java.contains("out.append(\"<h1>Posts</h1>\");"));
+        assertTrue(java.contains("out.append(\"<ul><li>item</li></ul>\");"));
+
+        // renderFragment dispatch
+        assertTrue(java.contains("public void renderFragment(String _name, HtmlOutput out)"));
+        assertTrue(java.contains("case \"post-list\" -> renderFragment_post_list(out);"));
+        assertTrue(java.contains("default -> throw new IllegalArgumentException(\"Unknown fragment: \" + _name);"));
+
+        // Per-fragment method
+        assertTrue(java.contains("private void renderFragment_post_list(HtmlOutput out)"));
+    }
+
+    @Test
+    void testPageWithFragmentUsesGetters() {
+        BodyNode body = parseTemplate("{{ fragment \"results\" }}<p>{{ title }}</p>{{ end }}");
+
+        String java = generate(new SubclassCodeGenerator.SubclassInput(
+                "SearchPage", "pages", JavaAnalyzer.FileType.PAGE,
+                "/search", null,
+                Set.of("title"), Map.of("title", "String"), Set.of(),
+                body));
+
+        // Fragment method should use getter access
+        assertTrue(java.contains("this.getTitle()"), "Fragment should use getter for field access");
+    }
+
+    @Test
+    void testPageWithMultipleFragments() {
+        BodyNode body = parseTemplate(
+                "{{ fragment \"header\" }}<h1>Title</h1>{{ end }}" +
+                "{{ fragment \"body\" }}<p>Content</p>{{ end }}");
+
+        String java = generate(new SubclassCodeGenerator.SubclassInput(
+                "TestPage", "pages", JavaAnalyzer.FileType.PAGE,
+                "/test", null,
+                Set.of(), Map.of(), Set.of(),
+                body));
+
+        // Both fragments in switch
+        assertTrue(java.contains("case \"header\" -> renderFragment_header(out);"));
+        assertTrue(java.contains("case \"body\" -> renderFragment_body(out);"));
+
+        // Both private methods
+        assertTrue(java.contains("private void renderFragment_header(HtmlOutput out)"));
+        assertTrue(java.contains("private void renderFragment_body(HtmlOutput out)"));
+    }
+
+    @Test
+    void testPageWithNoFragmentsDoesNotGenerateFragmentMethods() {
+        BodyNode body = parseTemplate("<h1>No fragments here</h1>");
+
+        String java = generate(new SubclassCodeGenerator.SubclassInput(
+                "SimplePage", "pages", JavaAnalyzer.FileType.PAGE,
+                "/simple", null,
+                Set.of(), Map.of(), Set.of(),
+                body));
+
+        assertFalse(java.contains("renderFragment"), "Should not generate fragment methods when no fragments");
+    }
+
+    @Test
+    void testFragmentNameWithHyphensConvertsToUnderscores() {
+        BodyNode body = parseTemplate("{{ fragment \"search-results\" }}<div>results</div>{{ end }}");
+
+        String java = generate(new SubclassCodeGenerator.SubclassInput(
+                "TestPage", "pages", JavaAnalyzer.FileType.PAGE,
+                "/test", null,
+                Set.of(), Map.of(), Set.of(),
+                body));
+
+        assertTrue(java.contains("renderFragment_search_results(out)"));
+        assertTrue(java.contains("private void renderFragment_search_results(HtmlOutput out)"));
+    }
+
     // ========== LAYOUT Tests ==========
 
     @Test

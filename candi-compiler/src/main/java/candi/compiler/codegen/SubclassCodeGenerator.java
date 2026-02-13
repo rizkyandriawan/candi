@@ -2,6 +2,7 @@ package candi.compiler.codegen;
 
 import candi.compiler.JavaAnalyzer;
 import candi.compiler.ast.BodyNode;
+import candi.compiler.ast.FragmentNode;
 
 import java.util.*;
 
@@ -121,6 +122,7 @@ public class SubclassCodeGenerator {
 
         line("");
         generatePageRender();
+        generateFragmentMethods();
 
         indent--;
         line("}");
@@ -154,6 +156,12 @@ public class SubclassCodeGenerator {
         indent--;
         bodyRenderer.setIndent(indent);
         line("}");
+    }
+
+    private void generateFragmentMethods() {
+        List<FragmentNode> fragments = bodyRenderer.collectFragments(input.body);
+        bodyRenderer.setIndent(indent);
+        bodyRenderer.renderFragmentMethods(fragments);
     }
 
     // ========== LAYOUT Generation ==========

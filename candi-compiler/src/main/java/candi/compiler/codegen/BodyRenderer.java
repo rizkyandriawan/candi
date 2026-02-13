@@ -3,6 +3,7 @@ package candi.compiler.codegen;
 import candi.compiler.ast.*;
 import candi.compiler.expr.Expression;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
@@ -84,6 +85,7 @@ public class BodyRenderer {
             case ForNode forNode -> renderFor(forNode);
             case IncludeNode include -> renderInclude(include);
             case ComponentCallNode call -> renderWidgetCall(call);
+            case FragmentNode fragment -> renderFragment(fragment);
             case ContentNode content -> renderContent(content);
             default -> throw new IllegalStateException("Unexpected node in body: " + node.getClass());
         }
@@ -152,8 +154,90 @@ public class BodyRenderer {
         line("}");
     }
 
+    private void renderFragment(FragmentNode node) {
+        // Inline: just render the body children as part of the normal page
+        renderBodyNodes(node.body().children());
+    }
+
     private void renderContent(ContentNode node) {
         line("slots.renderSlot(\"content\", out);");
+    }
+
+    // ========== Fragment Code Generation Helpers ==========
+
+    /**
+     * Collect all FragmentNodes from a body (recursively).
+     */
+    public List<FragmentNode> collectFragments(BodyNode body) {
+        List<FragmentNode> fragments = new ArrayList<>();
+        if (body != null) {
+            collectFragmentsFromNodes(body.children(), fragments);
+        }
+        return fragments;
+    }
+
+    private void collectFragmentsFromNodes(List<Node> nodes, List<FragmentNode> fragments) {
+        for (Node node : nodes) {
+            if (node instanceof FragmentNode f) {
+                fragments.add(f);
+                // Also check inside fragment body for nested fragments
+                collectFragmentsFromNodes(f.body().children(), fragments);
+            } else if (node instanceof IfNode ifNode) {
+                collectFragmentsFromNodes(ifNode.thenBody().children(), fragments);
+                if (ifNode.elseBody() != null) {
+                    collectFragmentsFromNodes(ifNode.elseBody().children(), fragments);
+                }
+            } else if (node instanceof ForNode forNode) {
+                collectFragmentsFromNodes(forNode.body().children(), fragments);
+            }
+        }
+    }
+
+    /**
+     * Convert a fragment name to a valid Java method suffix.
+     * "post-list" → "post_list"
+     */
+    public static String fragmentMethodSuffix(String name) {
+        return name.replace('-', '_');
+    }
+
+    /**
+     * Generate renderFragment() dispatch method and per-fragment private methods.
+     */
+    public void renderFragmentMethods(List<FragmentNode> fragments) {
+        if (fragments.isEmpty()) return;
+
+        // Generate dispatch method
+        line("");
+        line("@Override");
+        line("public void renderFragment(String _name, HtmlOutput out) {");
+        indent++;
+        setIndent(indent);
+        line("switch (_name) {");
+        indent++;
+        setIndent(indent);
+        for (FragmentNode f : fragments) {
+            line("case \"" + CodeGenerator.escapeJavaString(f.name()) + "\" -> renderFragment_" + fragmentMethodSuffix(f.name()) + "(out);");
+        }
+        line("default -> throw new IllegalArgumentException(\"Unknown fragment: \" + _name);");
+        indent--;
+        setIndent(indent);
+        line("}");
+        indent--;
+        setIndent(indent);
+        line("}");
+
+        // Generate per-fragment methods
+        for (FragmentNode f : fragments) {
+            line("");
+            line("private void renderFragment_" + fragmentMethodSuffix(f.name()) + "(HtmlOutput out) {");
+            indent++;
+            setIndent(indent);
+            renderBodyNodes(f.body().children());
+            indent--;
+            setIndent(indent);
+            line("}");
+        }
     }
 
     // ========== Expression Code Generation ==========
@@ -257,6 +341,9 @@ public class BodyRenderer {
             }
             if (node instanceof ForNode forNode) {
                 if (hasComponentCallsInBody(forNode.body())) return true;
+            }
+            if (node instanceof FragmentNode fragmentNode) {
+                if (hasComponentCallsInBody(fragmentNode.body())) return true;
             }
         }
         return false;

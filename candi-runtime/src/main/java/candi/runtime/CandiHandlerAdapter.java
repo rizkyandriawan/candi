@@ -94,11 +94,21 @@ public class CandiHandlerAdapter implements HandlerAdapter {
         // 4. onGet() — data loading before render (skipped on redirect)
         page.onGet();
 
-        // 5. Render
-        HtmlOutput out = new HtmlOutput();
-        page.render(out);
+        // 5. Detect fragment request (AJAX partial rendering)
+        String fragmentName = request.getHeader("Candi-Fragment");
+        if (fragmentName == null) {
+            fragmentName = request.getParameter("_fragment");
+        }
 
-        // 6. Write response
+        // 6. Render
+        HtmlOutput out = new HtmlOutput();
+        if (fragmentName != null) {
+            page.renderFragment(fragmentName, out);
+        } else {
+            page.render(out);
+        }
+
+        // 7. Write response
         response.setContentType("text/html;charset=UTF-8");
         response.getWriter().write(out.toHtml());
 

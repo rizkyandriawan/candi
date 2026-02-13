@@ -253,6 +253,38 @@ class CandiAnnotationProcessorTest {
     }
 
     @Test
+    void testPageWithFragment() throws IOException {
+        String source = """
+                package test;
+
+                import candi.runtime.Page;
+                import candi.runtime.Template;
+
+                @Page("/posts")
+                @Template(\"""
+                <h1>Posts</h1>
+                {{ fragment "post-list" }}
+                <ul><li>items</li></ul>
+                {{ end }}
+                \""")
+                public class PostsPage {
+                }
+                """;
+
+        assertTrue(compileSource("PostsPage", source));
+
+        String generated = readGenerated("PostsPage");
+        assertTrue(generated.contains("class PostsPage_Candi extends PostsPage"));
+        assertTrue(generated.contains("implements CandiPage"));
+        // Fragment dispatch method
+        assertTrue(generated.contains("public void renderFragment(String _name, HtmlOutput out)"));
+        assertTrue(generated.contains("case \"post-list\""));
+        assertTrue(generated.contains("renderFragment_post_list(out)"));
+        // Per-fragment method
+        assertTrue(generated.contains("private void renderFragment_post_list(HtmlOutput out)"));
+    }
+
+    @Test
     void testMissingTemplateProducesError() throws IOException {
         String source = """
                 package test;

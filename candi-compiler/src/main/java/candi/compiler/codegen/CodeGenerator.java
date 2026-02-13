@@ -4,6 +4,7 @@ import candi.compiler.JavaAnalyzer;
 import candi.compiler.ast.*;
 import candi.compiler.expr.Expression;
 
+import java.util.ArrayList;
 import java.util.*;
 
 /**
@@ -168,6 +169,7 @@ public class CodeGenerator {
         // Generate render method
         line("");
         generatePageRender();
+        generateFragmentMethods();
 
         indent--;
         line("}");
@@ -345,6 +347,7 @@ public class CodeGenerator {
         }
         line("");
         generatePageRender();
+        generateFragmentMethods();
         indent--;
         line("}");
     }
@@ -366,6 +369,7 @@ public class CodeGenerator {
             case ForNode forNode -> generateFor(forNode);
             case IncludeNode include -> generateInclude(include);
             case ComponentCallNode call -> generateWidgetCall(call);
+            case FragmentNode fragment -> generateBodyNodes(fragment.body().children());
             case ContentNode content -> generateContent(content);
             default -> throw new IllegalStateException("Unexpected node in body: " + node.getClass());
         }
@@ -436,6 +440,63 @@ public class CodeGenerator {
 
     private void generateContent(ContentNode node) {
         line("slots.renderSlot(\"content\", out);");
+    }
+
+    // ========== Fragment Code Generation ==========
+
+    private void generateFragmentMethods() {
+        List<FragmentNode> fragments = collectFragments(page.body());
+        if (fragments.isEmpty()) return;
+
+        // Generate dispatch method
+        line("");
+        line("@Override");
+        line("public void renderFragment(String _name, HtmlOutput out) {");
+        indent++;
+        line("switch (_name) {");
+        indent++;
+        for (FragmentNode f : fragments) {
+            line("case \"" + escapeJavaString(f.name()) + "\" -> renderFragment_" + BodyRenderer.fragmentMethodSuffix(f.name()) + "(out);");
+        }
+        line("default -> throw new IllegalArgumentException(\"Unknown fragment: \" + _name);");
+        indent--;
+        line("}");
+        indent--;
+        line("}");
+
+        // Generate per-fragment methods
+        for (FragmentNode f : fragments) {
+            line("");
+            line("private void renderFragment_" + BodyRenderer.fragmentMethodSuffix(f.name()) + "(HtmlOutput out) {");
+            indent++;
+            generateBodyNodes(f.body().children());
+            indent--;
+            line("}");
+        }
+    }
+
+    private List<FragmentNode> collectFragments(BodyNode body) {
+        List<FragmentNode> fragments = new ArrayList<>();
+        if (body != null) {
+            collectFragmentsFromNodes(body.children(), fragments);
+        }
+        return fragments;
+    }
+
+    private void collectFragmentsFromNodes(List<Node> nodes, List<FragmentNode> fragments) {
+        for (Node node : nodes) {
+            if (node instanceof FragmentNode f) {
+                fragments.add(f);
+                collectFragmentsFromNodes(f.body().children(), fragments);
+            } else if (node instanceof IfNode ifNode) {
+                collectFragmentsFromNodes(ifNode.thenBody().children(), fragments);
+                if (ifNode.elseBody() != null) {
+                    collectFragmentsFromNodes(ifNode.elseBody().children(), fragments);
+                }
+            } else if (node instanceof ForNode forNode) {
+                collectFragmentsFromNodes(forNode.body().children(), fragments);
+            }
+        }
     }
 
     // ========== Expression Code Generation ==========
@@ -575,6 +636,9 @@ public class CodeGenerator {
             }
             if (node instanceof ForNode forNode) {
                 if (hasComponentCallsInBody(forNode.body())) return true;
+            }
+            if (node instanceof FragmentNode fragmentNode) {
+                if (hasComponentCallsInBody(fragmentNode.body())) return true;
             }
         }
         return false;

@@ -167,8 +167,56 @@ Used in any page or layout: `{{ widget "alert" type="error" message="Oops" }}`
 | `{{ if a }}...{{ else }}...{{ end }}` | If/else |
 | `{{ if a }}...{{ else if b }}...{{ end }}` | Else-if chain |
 | `{{ for item in list }}...{{ end }}` | Loop |
+| `{{ fragment "name" }}...{{ end }}` | Named fragment (AJAX partial rendering) |
 | `{{ widget "card" title="Hello" }}` | Render widget |
 | `{{ content }}` | Layout content placeholder |
+
+## AJAX Fragments
+
+Render only a named section of a page — no JSON, no JS framework. Use it for search results, load-more, form submissions without full page reload.
+
+```java
+@Page("/posts")
+@Template("""
+<h1>Posts</h1>
+{{ fragment "post-list" }}
+<ul>
+  {{ for post in posts }}
+    <li>{{ post.title }}</li>
+  {{ end }}
+</ul>
+{{ end }}
+""")
+public class PostsPage {
+    @Autowired private PostService svc;
+    private List<Post> posts;
+
+    public void onGet() {
+        posts = svc.findAll();
+    }
+}
+```
+
+**Normal request** — renders the full page (fragment content included inline).
+
+**Fragment request** — returns only the fragment HTML, layout is skipped:
+
+```
+GET /posts
+Candi-Fragment: post-list
+```
+
+Or via query parameter: `GET /posts?_fragment=post-list`
+
+Pair with htmx or a simple `fetch()` call:
+
+```html
+<button hx-get="/posts?_fragment=post-list" hx-target="#results">
+  Refresh
+</button>
+```
+
+The server runs the full page lifecycle (`init()` → `onGet()`), then renders only the named fragment. Same data loading, smaller response.
 
 ## Quick Start
 
@@ -324,6 +372,7 @@ File watcher detects changes, recompiles, hot-swaps class, pushes reload to brow
 | Real Java | Fields, methods, annotations — full IDE support |
 | Spring Boot native | Use any Spring service, repository, component via `@Autowired` |
 | Layouts & widgets | `@Layout` + `{{ widget }}` for reuse |
+| AJAX fragments | `{{ fragment "name" }}` for partial rendering — no JSON, no JS framework |
 | Null-safe expressions | `?.` compiles to Java null checks |
 | Hot reload | SSE-based live reload, no server restart |
 | GraalVM compatible | Runtime hints included for native image |

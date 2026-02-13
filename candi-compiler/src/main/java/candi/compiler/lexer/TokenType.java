@@ -17,6 +17,7 @@ public enum TokenType {
     KEYWORD_COMPONENT, // component (legacy, kept for backward compat)
     KEYWORD_WIDGET,    // widget
     KEYWORD_CONTENT,   // content (layout placeholder)
+    KEYWORD_FRAGMENT,  // fragment (AJAX fragment block)
 
     // Literals
     STRING_LITERAL, // "..."

@@ -127,6 +127,40 @@ class CandiDemoIntegrationTest {
                 .andExpect(content().string(containsString("<footer>Powered by Candi</footer>")));
     }
 
+    // ========== Fragment rendering (AJAX) ==========
+
+    @Test
+    @Order(32)
+    void searchPageRendersFullPageByDefault() throws Exception {
+        mockMvc.perform(get("/search"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("<h1>Search</h1>")))
+                .andExpect(content().string(containsString("<ul>")))
+                .andExpect(content().string(containsString("Hello Candi")));
+    }
+
+    @Test
+    @Order(33)
+    void searchPageReturnsFragmentWithHeader() throws Exception {
+        mockMvc.perform(get("/search")
+                        .header("Candi-Fragment", "results"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("<ul>")))
+                .andExpect(content().string(containsString("Hello Candi")))
+                .andExpect(content().string(not(containsString("<h1>Search</h1>"))));
+    }
+
+    @Test
+    @Order(34)
+    void searchPageReturnsFragmentWithQueryParam() throws Exception {
+        mockMvc.perform(get("/search")
+                        .param("_fragment", "results"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("<ul>")))
+                .andExpect(content().string(containsString("Hello Candi")))
+                .andExpect(content().string(not(containsString("<h1>Search</h1>"))));
+    }
+
     // ========== Component rendering ==========
 
     @Test

@@ -98,6 +98,7 @@ public class Parser {
             case KEYWORD_INCLUDE -> parseInclude(start);
             case KEYWORD_COMPONENT -> parseComponentCall(start);
             case KEYWORD_WIDGET -> parseWidgetCall(start);
+            case KEYWORD_FRAGMENT -> parseFragmentBlock(start);
             case KEYWORD_CONTENT -> parseContent(start);
             default -> parseExpressionOutput(start);
         };
@@ -153,6 +154,21 @@ public class Parser {
         expect(TokenType.EXPR_END, "'}}'");
 
         return new ForNode(varName.value(), collection, body, start);
+    }
+
+    private FragmentNode parseFragmentBlock(SourceLocation start) {
+        consume(); // fragment keyword
+        Token name = expect(TokenType.STRING_LITERAL, "fragment name");
+        expect(TokenType.EXPR_END, "'}}'");
+
+        BodyNode body = parseBodyUntilEndOrElse();
+
+        // Consume {{ end }}
+        expect(TokenType.EXPR_START, "'{{'");
+        expect(TokenType.KEYWORD_END, "'end'");
+        expect(TokenType.EXPR_END, "'}}'");
+
+        return new FragmentNode(name.value(), body, start);
     }
 
     private RawExpressionOutputNode parseRawExpression(SourceLocation start) {

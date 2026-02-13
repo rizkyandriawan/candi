@@ -565,6 +565,52 @@ class CandiCompilerTest {
     }
 
     @Test
+    void testFragmentInlineRendering() {
+        String source = """
+                <h1>Posts</h1>
+                {{ fragment "post-list" }}<ul><li>item</li></ul>{{ end }}
+                <footer>done</footer>
+                """;
+
+        String java = compiler.compile(source, "test.jhtml", "pages", "Test__Page");
+
+        // Fragment renders inline in the main render() method
+        assertTrue(java.contains("out.append(\"<h1>Posts</h1>"));
+        assertTrue(java.contains("out.append(\"<ul><li>item</li></ul>"));
+        assertTrue(java.contains("out.append(\"\\n<footer>done</footer>"));
+
+        // renderFragment dispatch method is generated
+        assertTrue(java.contains("public void renderFragment(String _name, HtmlOutput out)"));
+        assertTrue(java.contains("case \"post-list\""));
+        assertTrue(java.contains("renderFragment_post_list(out)"));
+
+        // Per-fragment private method is generated
+        assertTrue(java.contains("private void renderFragment_post_list(HtmlOutput out)"));
+    }
+
+    @Test
+    void testFragmentWithExpressions() {
+        String source = """
+                public class PostsPage {
+                    private List<Post> posts;
+                }
+
+                <template>
+                {{ fragment "post-list" }}{{ for p in posts }}<li>{{ p.title }}</li>{{ end }}{{ end }}
+                </template>
+                """;
+
+        String java = compiler.compile(source, "test.jhtml", "pages", "PostsPage");
+
+        // Both render() and renderFragment_post_list() should contain the loop
+        assertTrue(java.contains("renderFragment_post_list(out)"));
+        assertTrue(java.contains("private void renderFragment_post_list(HtmlOutput out)"));
+        // The fragment method body should iterate over posts
+        assertTrue(java.contains("for (var p : this.posts)"));
+        assertTrue(java.contains("p.getTitle()"));
+    }
+
+    @Test
     void testTemplateAnnotationWidget() {
         String source = """
                 @Widget

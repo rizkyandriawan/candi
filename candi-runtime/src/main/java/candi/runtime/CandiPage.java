@@ -34,4 +34,12 @@ public interface CandiPage {
      * Render the full page HTML.
      */
     void render(HtmlOutput out);
+
+    /**
+     * Render a named fragment (for AJAX partial rendering).
+     * Generated subclasses override this with a switch dispatch.
+     */
+    default void renderFragment(String name, HtmlOutput out) {
+        throw new UnsupportedOperationException("No fragments defined in " + getClass().getName());
+    }
 }
