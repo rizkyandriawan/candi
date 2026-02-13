@@ -121,8 +121,10 @@ class SubclassCodeGeneratorTest {
                 Set.of("allPosts"), Map.of("allPosts", "List<Post>"), Set.of(),
                 body));
 
-        assertTrue(java.contains("for (var post : this.getAllPosts())"),
-                "for-in collection should use getter");
+        assertTrue(java.contains("for (int post_index = 0;"),
+                "for loop should use indexed iteration");
+        assertTrue(java.contains("var post = _list_post.get(post_index);"),
+                "loop variable should be extracted from list");
         assertTrue(java.contains("post.getTitle()"));
     }
 
@@ -371,5 +373,317 @@ class SubclassCodeGeneratorTest {
                 body));
 
         assertTrue(java.contains("package com.example.pages;"));
+    }
+
+    // ========== Loop Metadata Tests ==========
+
+    @Test
+    void testForLoopMetadata() {
+        BodyNode body = parseTemplate(
+                "{{ for item in items }}" +
+                "{{ if item_first }}<strong>{{ end }}" +
+                "<li>{{ item }}</li>" +
+                "{{ if item_last }}</ul>{{ end }}" +
+                "{{ end }}");
+
+        String java = generate(new SubclassCodeGenerator.SubclassInput(
+                "TestPage", "pages", JavaAnalyzer.FileType.PAGE,
+                "/test", null,
+                Set.of("items"), Map.of("items", "List<String>"), Set.of(),
+                body));
+
+        assertTrue(java.contains("for (int item_index = 0;"), "Should generate indexed loop");
+        assertTrue(java.contains("boolean item_first = (item_index == 0);"), "Should generate item_first");
+        assertTrue(java.contains("boolean item_last = (item_index == _list_item.size() - 1);"), "Should generate item_last");
+    }
+
+    // ========== Ternary Expression Tests ==========
+
+    @Test
+    void testTernaryExpression() {
+        BodyNode body = parseTemplate("{{ active ? \"yes\" : \"no\" }}");
+
+        String java = generate(new SubclassCodeGenerator.SubclassInput(
+                "TestPage", "pages", JavaAnalyzer.FileType.PAGE,
+                "/test", null,
+                Set.of("active"), Map.of("active", "boolean"), Set.of(),
+                body));
+
+        assertTrue(java.contains("?"), "Should contain ternary operator");
+        assertTrue(java.contains(":"), "Should contain ternary colon");
+        assertTrue(java.contains("\"yes\""));
+        assertTrue(java.contains("\"no\""));
+    }
+
+    // ========== Null Coalescing Tests ==========
+
+    @Test
+    void testNullCoalescing() {
+        BodyNode body = parseTemplate("{{ name ?? \"Guest\" }}");
+
+        String java = generate(new SubclassCodeGenerator.SubclassInput(
+                "TestPage", "pages", JavaAnalyzer.FileType.PAGE,
+                "/test", null,
+                Set.of("name"), Map.of("name", "String"), Set.of(),
+                body));
+
+        assertTrue(java.contains("this.getName()"), "Should use getter");
+        assertTrue(java.contains("!= null"), "Should null-check");
+        assertTrue(java.contains("\"Guest\""), "Should have fallback");
+    }
+
+    // ========== Arithmetic Tests ==========
+
+    @Test
+    void testArithmeticExpression() {
+        BodyNode body = parseTemplate("{{ a + b }}");
+
+        String java = generate(new SubclassCodeGenerator.SubclassInput(
+                "TestPage", "pages", JavaAnalyzer.FileType.PAGE,
+                "/test", null,
+                Set.of("a", "b"), Map.of("a", "int", "b", "int"), Set.of(),
+                body));
+
+        assertTrue(java.contains("this.getA()"), "Should use getter for a");
+        assertTrue(java.contains("this.getB()"), "Should use getter for b");
+        assertTrue(java.contains("+"), "Should contain plus operator");
+    }
+
+    // ========== String Concatenation Tests ==========
+
+    @Test
+    void testStringConcat() {
+        BodyNode body = parseTemplate("{{ first ~ \" \" ~ last }}");
+
+        String java = generate(new SubclassCodeGenerator.SubclassInput(
+                "TestPage", "pages", JavaAnalyzer.FileType.PAGE,
+                "/test", null,
+                Set.of("first", "last"), Map.of("first", "String", "last", "String"), Set.of(),
+                body));
+
+        assertTrue(java.contains("String.valueOf"), "String concat should use String.valueOf");
+    }
+
+    // ========== Unary Minus Tests ==========
+
+    @Test
+    void testUnaryMinus() {
+        BodyNode body = parseTemplate("{{ -amount }}");
+
+        String java = generate(new SubclassCodeGenerator.SubclassInput(
+                "TestPage", "pages", JavaAnalyzer.FileType.PAGE,
+                "/test", null,
+                Set.of("amount"), Map.of("amount", "double"), Set.of(),
+                body));
+
+        assertTrue(java.contains("-("), "Should contain unary minus");
+        assertTrue(java.contains("this.getAmount()"), "Should use getter");
+    }
+
+    // ========== Filter Tests ==========
+
+    @Test
+    void testSimpleFilter() {
+        BodyNode body = parseTemplate("{{ name | upper }}");
+
+        String java = generate(new SubclassCodeGenerator.SubclassInput(
+                "TestPage", "pages", JavaAnalyzer.FileType.PAGE,
+                "/test", null,
+                Set.of("name"), Map.of("name", "String"), Set.of(),
+                body));
+
+        assertTrue(java.contains("candi.runtime.CandiFilters.upper("), "Should call CandiFilters.upper");
+        assertTrue(java.contains("this.getName()"), "Should use getter as filter input");
+    }
+
+    @Test
+    void testFilterWithArgs() {
+        BodyNode body = parseTemplate("{{ text | truncate(100) }}");
+
+        String java = generate(new SubclassCodeGenerator.SubclassInput(
+                "TestPage", "pages", JavaAnalyzer.FileType.PAGE,
+                "/test", null,
+                Set.of("text"), Map.of("text", "String"), Set.of(),
+                body));
+
+        assertTrue(java.contains("candi.runtime.CandiFilters.truncate("), "Should call CandiFilters.truncate");
+        assertTrue(java.contains("100"), "Should pass truncate argument");
+    }
+
+    @Test
+    void testChainedFilters() {
+        BodyNode body = parseTemplate("{{ name | trim | upper }}");
+
+        String java = generate(new SubclassCodeGenerator.SubclassInput(
+                "TestPage", "pages", JavaAnalyzer.FileType.PAGE,
+                "/test", null,
+                Set.of("name"), Map.of("name", "String"), Set.of(),
+                body));
+
+        assertTrue(java.contains("candi.runtime.CandiFilters.upper(candi.runtime.CandiFilters.trim("),
+                "Should chain filters");
+    }
+
+    // ========== Index Access Tests ==========
+
+    @Test
+    void testIndexAccessList() {
+        BodyNode body = parseTemplate("{{ items[0] }}");
+
+        String java = generate(new SubclassCodeGenerator.SubclassInput(
+                "TestPage", "pages", JavaAnalyzer.FileType.PAGE,
+                "/test", null,
+                Set.of("items"), Map.of("items", "List<String>"), Set.of(),
+                body));
+
+        assertTrue(java.contains("candi.runtime.CandiRuntime.index("), "Should use CandiRuntime.index");
+        assertTrue(java.contains("this.getItems()"), "Should use getter");
+    }
+
+    @Test
+    void testIndexAccessMap() {
+        BodyNode body = parseTemplate("{{ config[\"key\"] }}");
+
+        String java = generate(new SubclassCodeGenerator.SubclassInput(
+                "TestPage", "pages", JavaAnalyzer.FileType.PAGE,
+                "/test", null,
+                Set.of("config"), Map.of("config", "Map<String,String>"), Set.of(),
+                body));
+
+        assertTrue(java.contains("candi.runtime.CandiRuntime.index("), "Should use CandiRuntime.index");
+        assertTrue(java.contains("\"key\""), "Should pass string key");
+    }
+
+    // ========== Set Variable Tests ==========
+
+    @Test
+    void testSetVariable() {
+        BodyNode body = parseTemplate("{{ set greeting = \"Hello\" }}<p>{{ greeting }}</p>");
+
+        String java = generate(new SubclassCodeGenerator.SubclassInput(
+                "TestPage", "pages", JavaAnalyzer.FileType.PAGE,
+                "/test", null,
+                Set.of(), Map.of(), Set.of(),
+                body));
+
+        assertTrue(java.contains("var greeting = \"Hello\";"), "Should generate local variable");
+        assertTrue(java.contains("greeting"), "Should use the variable");
+    }
+
+    // ========== Switch/Case Tests ==========
+
+    @Test
+    void testSwitchCase() {
+        BodyNode body = parseTemplate(
+                "{{ switch status }}" +
+                "{{ case \"active\" }}<span class=\"green\">Active</span>" +
+                "{{ case \"inactive\" }}<span class=\"red\">Inactive</span>" +
+                "{{ default }}<span>Unknown</span>" +
+                "{{ end }}");
+
+        String java = generate(new SubclassCodeGenerator.SubclassInput(
+                "TestPage", "pages", JavaAnalyzer.FileType.PAGE,
+                "/test", null,
+                Set.of("status"), Map.of("status", "String"), Set.of(),
+                body));
+
+        assertTrue(java.contains("Objects.equals("), "Switch should use Objects.equals");
+        assertTrue(java.contains("\"active\""), "Should check active case");
+        assertTrue(java.contains("\"inactive\""), "Should check inactive case");
+        assertTrue(java.contains("} else {"), "Should have default else branch");
+    }
+
+    // ========== Named Slot Tests ==========
+
+    @Test
+    void testLayoutWithNamedSlot() {
+        BodyNode body = parseTemplate(
+                "<html><body>{{ content }}<aside>{{ slot \"sidebar\" }}<p>default sidebar</p>{{ end }}</aside></body></html>");
+
+        String java = generate(new SubclassCodeGenerator.SubclassInput(
+                "MainLayout", "layouts", JavaAnalyzer.FileType.LAYOUT,
+                null, "main",
+                Set.of(), Map.of(), Set.of(),
+                body));
+
+        assertTrue(java.contains("implements CandiLayout"), "Should implement CandiLayout");
+        assertTrue(java.contains("slots.renderSlot(\"sidebar\", out)"), "Should render named slot");
+    }
+
+    @Test
+    void testPageWithBlockForSlot() {
+        BodyNode body = parseTemplate(
+                "<h1>Content</h1>{{ block \"sidebar\" }}<nav>Custom Sidebar</nav>{{ end }}");
+
+        String java = generate(new SubclassCodeGenerator.SubclassInput(
+                "TestPage", "pages", JavaAnalyzer.FileType.PAGE,
+                "/test", "main",
+                Set.of(), Map.of(), Set.of(),
+                body));
+
+        assertTrue(java.contains("mainLayout.render(out,"), "Should call layout render");
+        assertTrue(java.contains("\"sidebar\""), "Should dispatch sidebar block");
+    }
+
+    // ========== Asset Stacking Tests ==========
+
+    @Test
+    void testStackRendering() {
+        BodyNode body = parseTemplate(
+                "<html><body>{{ content }}{{ stack \"scripts\" }}</body></html>");
+
+        String java = generate(new SubclassCodeGenerator.SubclassInput(
+                "BaseLayout", "layouts", JavaAnalyzer.FileType.LAYOUT,
+                null, "base",
+                Set.of(), Map.of(), Set.of(),
+                body));
+
+        assertTrue(java.contains("out.renderStack(\"scripts\")"), "Should render stack");
+    }
+
+    @Test
+    void testPushToStack() {
+        BodyNode body = parseTemplate(
+                "<h1>Page</h1>{{ push \"scripts\" }}<script src=\"app.js\"></script>{{ end }}");
+
+        String java = generate(new SubclassCodeGenerator.SubclassInput(
+                "TestPage", "pages", JavaAnalyzer.FileType.PAGE,
+                "/test", null,
+                Set.of(), Map.of(), Set.of(),
+                body));
+
+        assertTrue(java.contains("pushStack(\"scripts\""), "Should push to stack");
+    }
+
+    // ========== Comment Tests (codegen) ==========
+
+    @Test
+    void testCommentNotInOutput() {
+        BodyNode body = parseTemplate("<h1>Hello</h1>{{-- comment --}}<p>World</p>");
+
+        String java = generate(new SubclassCodeGenerator.SubclassInput(
+                "TestPage", "pages", JavaAnalyzer.FileType.PAGE,
+                "/test", null,
+                Set.of(), Map.of(), Set.of(),
+                body));
+
+        assertFalse(java.contains("comment"), "Comment should not appear in generated code");
+        assertTrue(java.contains("<h1>Hello</h1>"), "HTML before comment should remain");
+        assertTrue(java.contains("<p>World</p>"), "HTML after comment should remain");
+    }
+
+    // ========== Verbatim Tests (codegen) ==========
+
+    @Test
+    void testVerbatimOutput() {
+        BodyNode body = parseTemplate("{{ verbatim }}<p>{{ raw_mustache }}</p>{{ end }}");
+
+        String java = generate(new SubclassCodeGenerator.SubclassInput(
+                "TestPage", "pages", JavaAnalyzer.FileType.PAGE,
+                "/test", null,
+                Set.of(), Map.of(), Set.of(),
+                body));
+
+        assertTrue(java.contains("{{ raw_mustache }}"), "Verbatim content should preserve {{ }}");
     }
 }

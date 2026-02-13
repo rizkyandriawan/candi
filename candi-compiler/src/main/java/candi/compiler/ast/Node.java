@@ -5,7 +5,8 @@ import candi.compiler.SourceLocation;
 public sealed interface Node permits
         PageNode, IncludeNode, ContentNode, FragmentNode,
         BodyNode, HtmlNode, ExpressionOutputNode, RawExpressionOutputNode,
-        IfNode, ForNode, ComponentCallNode {
+        IfNode, ForNode, ComponentCallNode,
+        SetNode, SwitchNode, SlotNode, BlockNode, StackNode, PushNode {
 
     SourceLocation location();
 }

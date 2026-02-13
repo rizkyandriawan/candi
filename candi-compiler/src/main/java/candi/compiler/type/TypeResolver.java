@@ -212,7 +212,34 @@ public class TypeResolver {
                 resolveExpressionType(u.operand());
                 yield TypeInfo.BOOLEAN;
             }
+            case Expression.UnaryMinus u -> {
+                resolveExpressionType(u.operand());
+                yield TypeInfo.DOUBLE;
+            }
             case Expression.Grouped g -> resolveExpressionType(g.inner());
+            case Expression.Ternary t -> {
+                resolveExpressionType(t.condition());
+                TypeInfo thenType = resolveExpressionType(t.thenExpr());
+                resolveExpressionType(t.elseExpr());
+                yield thenType != null ? thenType : TypeInfo.OBJECT;
+            }
+            case Expression.NullCoalesce nc -> {
+                TypeInfo leftType = resolveExpressionType(nc.left());
+                resolveExpressionType(nc.fallback());
+                yield leftType != null ? leftType : TypeInfo.OBJECT;
+            }
+            case Expression.FilterCall f -> {
+                resolveExpressionType(f.input());
+                for (Expression arg : f.arguments()) {
+                    resolveExpressionType(arg);
+                }
+                yield TypeInfo.OBJECT;
+            }
+            case Expression.IndexAccess ia -> {
+                resolveExpressionType(ia.object());
+                resolveExpressionType(ia.index());
+                yield TypeInfo.OBJECT;
+            }
         };
     }
 }

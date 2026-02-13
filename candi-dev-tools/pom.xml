@@ -5,9 +5,9 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>candi</groupId>
+        <groupId>dev.kakrizky.candi</groupId>
         <artifactId>candi-parent</artifactId>
-        <version>0.1.0-SNAPSHOT</version>
+        <version>0.1.0</version>
     </parent>
 
     <artifactId>candi-dev-tools</artifactId>
@@ -16,12 +16,12 @@
 
     <dependencies>
         <dependency>
-            <groupId>candi</groupId>
+            <groupId>dev.kakrizky.candi</groupId>
             <artifactId>candi-compiler</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
-            <groupId>candi</groupId>
+            <groupId>dev.kakrizky.candi</groupId>
             <artifactId>candi-runtime</artifactId>
             <version>${project.version}</version>
         </dependency>

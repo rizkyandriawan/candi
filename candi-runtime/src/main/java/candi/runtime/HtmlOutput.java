@@ -7,6 +7,7 @@ package candi.runtime;
 public class HtmlOutput {
 
     private final StringBuilder sb;
+    private java.util.Map<String, java.util.List<String>> stacks;
 
     public HtmlOutput() {
         this.sb = new StringBuilder(4096);
@@ -59,6 +60,29 @@ public class HtmlOutput {
      */
     public int length() {
         return sb.length();
+    }
+
+    /**
+     * Push content to a named stack. Used by {{ push "name" }}...{{ end }}.
+     */
+    public void pushStack(String name, String content) {
+        if (stacks == null) {
+            stacks = new java.util.LinkedHashMap<>();
+        }
+        stacks.computeIfAbsent(name, k -> new java.util.ArrayList<>()).add(content);
+    }
+
+    /**
+     * Render all content pushed to a named stack. Used by {{ stack "name" }}.
+     */
+    public void renderStack(String name) {
+        if (stacks == null) return;
+        var items = stacks.get(name);
+        if (items != null) {
+            for (var item : items) {
+                sb.append(item);
+            }
+        }
     }
 
     @Override

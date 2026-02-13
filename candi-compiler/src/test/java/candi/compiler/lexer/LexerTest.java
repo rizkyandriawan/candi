@@ -307,4 +307,208 @@ class LexerTest {
         assertEquals("footer", tokens.get(2).value());
         assertEquals(TokenType.EXPR_END, tokens.get(3).type());
     }
+
+    // ========== Phase 1: Comments, Whitespace Control, Verbatim ==========
+
+    @Test
+    void testTemplateComment() {
+        String source = "<h1>Hello</h1>{{-- this is a comment --}}<p>World</p>";
+        List<Token> tokens = Lexer.tokenizeTemplate(source, "test.jhtml");
+
+        // Comment should be completely stripped — only HTML tokens remain
+        assertEquals(2, tokens.stream().filter(t -> t.type() == TokenType.HTML).count());
+        String combined = tokens.stream()
+                .filter(t -> t.type() == TokenType.HTML)
+                .map(Token::value)
+                .reduce("", String::concat);
+        assertEquals("<h1>Hello</h1><p>World</p>", combined);
+    }
+
+    @Test
+    void testCommentDoesNotEmitTokens() {
+        String source = "{{-- only a comment --}}";
+        List<Token> tokens = Lexer.tokenizeTemplate(source, "test.jhtml");
+
+        // Should produce no tokens at all (or only EOF-like empty)
+        assertTrue(tokens.stream().noneMatch(t -> t.type() == TokenType.EXPR_START));
+    }
+
+    @Test
+    void testWhitespaceControlTrimLeft() {
+        String source = "<p>hello</p>   \n  {{- title }}";
+        List<Token> tokens = Lexer.tokenizeTemplate(source, "test.jhtml");
+
+        // The HTML before {{- should have trailing whitespace trimmed
+        Token html = tokens.get(0);
+        assertEquals(TokenType.HTML, html.type());
+        assertEquals("<p>hello</p>", html.value());
+    }
+
+    @Test
+    void testWhitespaceControlTrimRight() {
+        String source = "{{ title -}}   \n  <p>hello</p>";
+        List<Token> tokens = Lexer.tokenizeTemplate(source, "test.jhtml");
+
+        // The HTML after -}} should have leading whitespace trimmed
+        Token html = tokens.stream()
+                .filter(t -> t.type() == TokenType.HTML)
+                .reduce((a, b) -> b).orElseThrow();
+        assertEquals("<p>hello</p>", html.value());
+    }
+
+    @Test
+    void testWhitespaceControlBothSides() {
+        String source = "<p>A</p>  \n  {{- title -}}  \n  <p>B</p>";
+        List<Token> tokens = Lexer.tokenizeTemplate(source, "test.jhtml");
+
+        List<Token> htmlTokens = tokens.stream()
+                .filter(t -> t.type() == TokenType.HTML).toList();
+        assertEquals("<p>A</p>", htmlTokens.get(0).value());
+        assertEquals("<p>B</p>", htmlTokens.get(1).value());
+    }
+
+    @Test
+    void testVerbatimBlock() {
+        String source = "{{ verbatim }}<p>{{ this is not parsed }}</p>{{ end }}";
+        List<Token> tokens = Lexer.tokenizeTemplate(source, "test.jhtml");
+
+        // Verbatim content should become a single HTML token with raw content
+        Token html = tokens.stream()
+                .filter(t -> t.type() == TokenType.HTML)
+                .findFirst().orElseThrow();
+        assertTrue(html.value().contains("{{ this is not parsed }}"));
+    }
+
+    // ========== Phase 2: New Operator Tokens ==========
+
+    @Test
+    void testTernaryTokens() {
+        String source = "{{ cond ? \"yes\" : \"no\" }}";
+        List<Token> tokens = Lexer.tokenizeTemplate(source, "test.jhtml");
+
+        assertTrue(tokens.stream().anyMatch(t -> t.type() == TokenType.QUESTION));
+        assertTrue(tokens.stream().anyMatch(t -> t.type() == TokenType.COLON));
+    }
+
+    @Test
+    void testNullCoalesceTokens() {
+        String source = "{{ name ?? \"Guest\" }}";
+        List<Token> tokens = Lexer.tokenizeTemplate(source, "test.jhtml");
+
+        assertTrue(tokens.stream().anyMatch(t -> t.type() == TokenType.NULL_COALESCE));
+    }
+
+    @Test
+    void testArithmeticTokens() {
+        String source = "{{ a + b * c - d / e % f }}";
+        List<Token> tokens = Lexer.tokenizeTemplate(source, "test.jhtml");
+
+        assertTrue(tokens.stream().anyMatch(t -> t.type() == TokenType.PLUS));
+        assertTrue(tokens.stream().anyMatch(t -> t.type() == TokenType.STAR));
+        assertTrue(tokens.stream().anyMatch(t -> t.type() == TokenType.MINUS));
+        assertTrue(tokens.stream().anyMatch(t -> t.type() == TokenType.SLASH));
+        assertTrue(tokens.stream().anyMatch(t -> t.type() == TokenType.PERCENT));
+    }
+
+    @Test
+    void testTildeToken() {
+        String source = "{{ first ~ \" \" ~ last }}";
+        List<Token> tokens = Lexer.tokenizeTemplate(source, "test.jhtml");
+
+        long tildeCount = tokens.stream().filter(t -> t.type() == TokenType.TILDE).count();
+        assertEquals(2, tildeCount);
+    }
+
+    @Test
+    void testPipeToken() {
+        String source = "{{ name | upper }}";
+        List<Token> tokens = Lexer.tokenizeTemplate(source, "test.jhtml");
+
+        assertTrue(tokens.stream().anyMatch(t -> t.type() == TokenType.PIPE));
+        // Make sure single | is PIPE, not OR
+        assertFalse(tokens.stream().anyMatch(t -> t.type() == TokenType.OR));
+    }
+
+    @Test
+    void testPipeVsOr() {
+        String source = "{{ if a || b | upper }}yes{{ end }}";
+        List<Token> tokens = Lexer.tokenizeTemplate(source, "test.jhtml");
+
+        assertTrue(tokens.stream().anyMatch(t -> t.type() == TokenType.OR));
+        assertTrue(tokens.stream().anyMatch(t -> t.type() == TokenType.PIPE));
+    }
+
+    @Test
+    void testBracketTokens() {
+        String source = "{{ items[0] }}";
+        List<Token> tokens = Lexer.tokenizeTemplate(source, "test.jhtml");
+
+        assertTrue(tokens.stream().anyMatch(t -> t.type() == TokenType.LBRACKET));
+        assertTrue(tokens.stream().anyMatch(t -> t.type() == TokenType.RBRACKET));
+    }
+
+    // ========== Phase 5: New Keyword Tokens ==========
+
+    @Test
+    void testSetKeyword() {
+        String source = "{{ set x = 42 }}";
+        List<Token> tokens = Lexer.tokenizeTemplate(source, "test.jhtml");
+
+        assertEquals(TokenType.KEYWORD_SET, tokens.get(1).type());
+        assertEquals(TokenType.IDENTIFIER, tokens.get(2).type());
+        assertEquals("x", tokens.get(2).value());
+        assertEquals(TokenType.EQUALS_SIGN, tokens.get(3).type());
+        assertEquals(TokenType.NUMBER, tokens.get(4).type());
+    }
+
+    @Test
+    void testSwitchCaseKeywords() {
+        String source = "{{ switch status }}{{ case \"active\" }}yes{{ default }}no{{ end }}";
+        List<Token> tokens = Lexer.tokenizeTemplate(source, "test.jhtml");
+
+        assertTrue(tokens.stream().anyMatch(t -> t.type() == TokenType.KEYWORD_SWITCH));
+        assertTrue(tokens.stream().anyMatch(t -> t.type() == TokenType.KEYWORD_CASE));
+        assertTrue(tokens.stream().anyMatch(t -> t.type() == TokenType.KEYWORD_DEFAULT));
+        assertTrue(tokens.stream().anyMatch(t -> t.type() == TokenType.KEYWORD_END));
+    }
+
+    @Test
+    void testSlotKeyword() {
+        String source = "{{ slot \"sidebar\" }}default{{ end }}";
+        List<Token> tokens = Lexer.tokenizeTemplate(source, "test.jhtml");
+
+        assertEquals(TokenType.KEYWORD_SLOT, tokens.get(1).type());
+        assertEquals(TokenType.STRING_LITERAL, tokens.get(2).type());
+        assertEquals("sidebar", tokens.get(2).value());
+    }
+
+    @Test
+    void testBlockKeyword() {
+        String source = "{{ block \"sidebar\" }}<nav>menu</nav>{{ end }}";
+        List<Token> tokens = Lexer.tokenizeTemplate(source, "test.jhtml");
+
+        assertEquals(TokenType.KEYWORD_BLOCK, tokens.get(1).type());
+        assertEquals(TokenType.STRING_LITERAL, tokens.get(2).type());
+        assertEquals("sidebar", tokens.get(2).value());
+    }
+
+    @Test
+    void testStackKeyword() {
+        String source = "{{ stack \"scripts\" }}";
+        List<Token> tokens = Lexer.tokenizeTemplate(source, "test.jhtml");
+
+        assertEquals(TokenType.KEYWORD_STACK, tokens.get(1).type());
+        assertEquals(TokenType.STRING_LITERAL, tokens.get(2).type());
+        assertEquals("scripts", tokens.get(2).value());
+    }
+
+    @Test
+    void testPushKeyword() {
+        String source = "{{ push \"scripts\" }}<script>alert(1)</script>{{ end }}";
+        List<Token> tokens = Lexer.tokenizeTemplate(source, "test.jhtml");
+
+        assertEquals(TokenType.KEYWORD_PUSH, tokens.get(1).type());
+        assertEquals(TokenType.STRING_LITERAL, tokens.get(2).type());
+        assertEquals("scripts", tokens.get(2).value());
+    }
 }

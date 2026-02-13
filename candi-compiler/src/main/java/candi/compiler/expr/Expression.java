@@ -13,7 +13,12 @@ public sealed interface Expression permits
         Expression.NullSafeMethodCall,
         Expression.BinaryOp,
         Expression.UnaryNot,
-        Expression.Grouped {
+        Expression.UnaryMinus,
+        Expression.Grouped,
+        Expression.Ternary,
+        Expression.NullCoalesce,
+        Expression.FilterCall,
+        Expression.IndexAccess {
 
     SourceLocation location();
 
@@ -41,12 +46,27 @@ public sealed interface Expression permits
     /** Null-safe method call: expr?.method(args) */
     record NullSafeMethodCall(Expression object, String methodName, java.util.List<Expression> arguments, SourceLocation location) implements Expression {}
 
-    /** Binary operation: ==, !=, <, >, <=, >=, &&, || */
+    /** Binary operation: ==, !=, <, >, <=, >=, &&, ||, +, -, *, /, %, ~ */
     record BinaryOp(Expression left, String operator, Expression right, SourceLocation location) implements Expression {}
 
     /** Unary not: !expr */
     record UnaryNot(Expression operand, SourceLocation location) implements Expression {}
 
+    /** Unary minus: -expr */
+    record UnaryMinus(Expression operand, SourceLocation location) implements Expression {}
+
     /** Parenthesized expression: (expr) */
     record Grouped(Expression inner, SourceLocation location) implements Expression {}
+
+    /** Ternary: cond ? thenExpr : elseExpr */
+    record Ternary(Expression condition, Expression thenExpr, Expression elseExpr, SourceLocation location) implements Expression {}
+
+    /** Null coalescing: left ?? fallback */
+    record NullCoalesce(Expression left, Expression fallback, SourceLocation location) implements Expression {}
+
+    /** Filter/pipe: expr | filterName or expr | filterName(args) */
+    record FilterCall(Expression input, String filterName, java.util.List<Expression> arguments, SourceLocation location) implements Expression {}
+
+    /** Index/bracket access: expr[index] */
+    record IndexAccess(Expression object, Expression index, SourceLocation location) implements Expression {}
 }

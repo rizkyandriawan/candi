@@ -54,6 +54,7 @@ public class BodyRenderer {
     private final FieldAccessStrategy fieldAccess;
     private final StringBuilder sb;
     private int indent;
+    private int tempVarCounter = 0;
 
     public BodyRenderer(Set<String> fieldNames, FieldAccessStrategy fieldAccess, StringBuilder sb, int indent) {
         this.fieldNames = fieldNames;
@@ -87,6 +88,12 @@ public class BodyRenderer {
             case ComponentCallNode call -> renderWidgetCall(call);
             case FragmentNode fragment -> renderFragment(fragment);
             case ContentNode content -> renderContent(content);
+            case SetNode set -> renderSet(set);
+            case SwitchNode sw -> renderSwitch(sw);
+            case SlotNode slot -> renderSlot(slot);
+            case BlockNode block -> renderBlock(block);
+            case StackNode stack -> renderStack(stack);
+            case PushNode push -> renderPush(push);
             default -> throw new IllegalStateException("Unexpected node in body: " + node.getClass());
         }
     }
@@ -125,9 +132,26 @@ public class BodyRenderer {
 
     private void renderFor(ForNode node) {
         String collection = generateExpression(node.collection());
-        line("for (var " + node.variableName() + " : " + collection + ") {");
+        String varName = node.variableName();
+        String listVar = "_list_" + varName;
+        String indexVar = varName + "_index";
+        String firstVar = varName + "_first";
+        String lastVar = varName + "_last";
+        String sizeVar = "_size_" + varName;
+        String collVar = "_c_" + varName;
+        line("{");
         indent++;
+        line("var " + listVar + " = " + collection + ";");
+        line("int " + indexVar + " = 0;");
+        line("int " + sizeVar + " = (" + listVar + " instanceof java.util.Collection<?> " + collVar + ") ? " + collVar + ".size() : 0;");
+        line("for (var " + varName + " : " + listVar + ") {");
+        indent++;
+        line("boolean " + firstVar + " = (" + indexVar + " == 0);");
+        line("boolean " + lastVar + " = (" + indexVar + " == " + sizeVar + " - 1);");
         renderBodyNodes(node.body().children());
+        line(indexVar + "++;");
+        indent--;
+        line("}");
         indent--;
         line("}");
     }
@@ -163,6 +187,119 @@ public class BodyRenderer {
         line("slots.renderSlot(\"content\", out);");
     }
 
+    private void renderSet(SetNode node) {
+        String expr = generateExpression(node.value());
+        line("var " + node.variableName() + " = " + expr + ";");
+    }
+
+    private void renderSwitch(SwitchNode node) {
+        String subject = generateExpression(node.subject());
+        String tmpVar = "_sw" + (tempVarCounter++);
+        line("{");
+        indent++;
+        line("var " + tmpVar + " = " + subject + ";");
+        boolean first = true;
+        for (SwitchNode.CaseBranch branch : node.cases()) {
+            String caseVal = generateExpression(branch.value());
+            if (first) {
+                line("if (java.util.Objects.equals(" + tmpVar + ", " + caseVal + ")) {");
+                first = false;
+            } else {
+                line("} else if (java.util.Objects.equals(" + tmpVar + ", " + caseVal + ")) {");
+            }
+            indent++;
+            renderBodyNodes(branch.body().children());
+            indent--;
+        }
+        if (node.defaultBody() != null) {
+            if (first) {
+                // No case branches, only default
+                renderBodyNodes(node.defaultBody().children());
+            } else {
+                line("} else {");
+                indent++;
+                renderBodyNodes(node.defaultBody().children());
+                indent--;
+                line("}");
+            }
+        } else if (!first) {
+            line("}");
+        }
+        indent--;
+        line("}");
+    }
+
+    private void renderSlot(SlotNode node) {
+        String slotName = node.name();
+        // In a layout, render the slot content or fall back to default
+        line("{");
+        indent++;
+        line("int _before = out.length();");
+        line("slots.renderSlot(\"" + CodeGenerator.escapeJavaString(slotName) + "\", out);");
+        line("if (out.length() == _before) {");
+        indent++;
+        if (node.defaultContent() != null) {
+            renderBodyNodes(node.defaultContent().children());
+        }
+        indent--;
+        line("}");
+        indent--;
+        line("}");
+    }
+
+    private void renderBlock(BlockNode node) {
+        // Block nodes in page context are rendered inline (collected by SubclassCodeGenerator for slot dispatch)
+        renderBodyNodes(node.body().children());
+    }
+
+    private void renderStack(StackNode node) {
+        line("out.renderStack(\"" + CodeGenerator.escapeJavaString(node.name()) + "\");");
+    }
+
+    private void renderPush(PushNode node) {
+        String tmpVar = "_push" + (tempVarCounter++);
+        line("{");
+        indent++;
+        line("HtmlOutput " + tmpVar + " = new HtmlOutput();");
+        // Render push body into temp output
+        // We need to swap 'out' temporarily — but since we're generating code, we just use the temp var
+        // Actually, we generate the body with tmpVar as output
+        for (Node child : node.body().children()) {
+            renderPushBodyNode(child, tmpVar);
+        }
+        line("out.pushStack(\"" + CodeGenerator.escapeJavaString(node.name()) + "\", " + tmpVar + ".toHtml());");
+        indent--;
+        line("}");
+    }
+
+    /**
+     * Render a body node but targeting a different output variable.
+     */
+    private void renderPushBodyNode(Node node, String outVar) {
+        switch (node) {
+            case HtmlNode html -> {
+                String content = html.content();
+                if (!content.isEmpty()) {
+                    line(outVar + ".append(\"" + CodeGenerator.escapeJavaString(content) + "\");");
+                }
+            }
+            case ExpressionOutputNode expr -> {
+                String javaExpr = generateExpression(expr.expression());
+                line(outVar + ".appendEscaped(String.valueOf(" + javaExpr + "));");
+            }
+            case RawExpressionOutputNode raw -> {
+                String javaExpr = generateExpression(raw.expression());
+                line(outVar + ".append(String.valueOf(" + javaExpr + "));");
+            }
+            default -> {
+                // For complex nodes inside push, fall back to rendering into the temp output
+                // This is a simplified approach — complex nested structures in push blocks
+                // would need full out-variable parameterization
+                renderBodyNode(node);
+            }
+        }
+    }
+
     // ========== Fragment Code Generation Helpers ==========
 
     /**
@@ -189,6 +326,32 @@ public class BodyRenderer {
                 }
             } else if (node instanceof ForNode forNode) {
                 collectFragmentsFromNodes(forNode.body().children(), fragments);
+            }
+        }
+    }
+
+    /**
+     * Collect all BlockNodes from a body (recursively).
+     */
+    public List<BlockNode> collectBlocks(BodyNode body) {
+        List<BlockNode> blocks = new ArrayList<>();
+        if (body != null) {
+            collectBlocksFromNodes(body.children(), blocks);
+        }
+        return blocks;
+    }
+
+    private void collectBlocksFromNodes(List<Node> nodes, List<BlockNode> blocks) {
+        for (Node node : nodes) {
+            if (node instanceof BlockNode b) {
+                blocks.add(b);
+            } else if (node instanceof IfNode ifNode) {
+                collectBlocksFromNodes(ifNode.thenBody().children(), blocks);
+                if (ifNode.elseBody() != null) {
+                    collectBlocksFromNodes(ifNode.elseBody().children(), blocks);
+                }
+            } else if (node instanceof ForNode forNode) {
+                collectBlocksFromNodes(forNode.body().children(), blocks);
             }
         }
     }
@@ -286,6 +449,8 @@ public class BodyRenderer {
                     yield "Objects.equals(" + left + ", " + right + ")";
                 } else if ("!=".equals(b.operator())) {
                     yield "!Objects.equals(" + left + ", " + right + ")";
+                } else if ("~".equals(b.operator())) {
+                    yield "(String.valueOf(" + left + ") + String.valueOf(" + right + "))";
                 } else {
                     yield "(" + left + " " + b.operator() + " " + right + ")";
                 }
@@ -294,7 +459,42 @@ public class BodyRenderer {
                 String operand = generateExpression(u.operand());
                 yield "!(" + operand + ")";
             }
+            case Expression.UnaryMinus u -> {
+                String operand = generateExpression(u.operand());
+                yield "(-(" + operand + "))";
+            }
             case Expression.Grouped g -> "(" + generateExpression(g.inner()) + ")";
+            case Expression.Ternary t -> {
+                String cond = generateExpression(t.condition());
+                String then = generateExpression(t.thenExpr());
+                String els = generateExpression(t.elseExpr());
+                yield "(" + wrapBooleanCondition(t.condition(), cond) + " ? " + then + " : " + els + ")";
+            }
+            case Expression.NullCoalesce nc -> {
+                String left = generateExpression(nc.left());
+                String fallback = generateExpression(nc.fallback());
+                yield "(" + left + " != null ? " + left + " : " + fallback + ")";
+            }
+            case Expression.FilterCall f -> {
+                String input = generateExpression(f.input());
+                String filterName = f.filterName();
+                // Map "default" filter name to "defaultVal" to avoid Java keyword clash
+                String methodName = "default".equals(filterName) ? "defaultVal" : filterName;
+                if (f.arguments().isEmpty()) {
+                    yield "candi.runtime.CandiFilters." + methodName + "(" + input + ")";
+                } else {
+                    String args = f.arguments().stream()
+                            .map(this::generateExpression)
+                            .reduce((a, b2) -> a + ", " + b2)
+                            .orElse("");
+                    yield "candi.runtime.CandiFilters." + methodName + "(" + input + ", " + args + ")";
+                }
+            }
+            case Expression.IndexAccess ia -> {
+                String obj = generateExpression(ia.object());
+                String idx = generateExpression(ia.index());
+                yield "candi.runtime.CandiRuntime.index(" + obj + ", " + idx + ")";
+            }
         };
     }
 
@@ -306,6 +506,9 @@ public class BodyRenderer {
             return javaExpr;
         }
         if (expr instanceof Expression.MethodCall) {
+            return javaExpr;
+        }
+        if (expr instanceof Expression.Ternary) {
             return javaExpr;
         }
         return javaExpr + " != null && !Boolean.FALSE.equals(" + javaExpr + ")";

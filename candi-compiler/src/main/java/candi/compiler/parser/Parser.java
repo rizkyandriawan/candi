@@ -50,8 +50,8 @@ public class Parser {
     }
 
     /**
-     * Parse body content until we hit {{ end }} or {{ else }}.
-     * Used for if/for block bodies.
+     * Parse body content until we hit {{ end }} or {{ else }} or {{ case }} or {{ default }}.
+     * Used for if/for/switch block bodies.
      */
     private BodyNode parseBodyUntilEndOrElse() {
         List<Node> children = new ArrayList<>();
@@ -62,8 +62,11 @@ public class Parser {
                 Token html = consume();
                 children.add(new HtmlNode(html.value(), html.location()));
             } else if (check(TokenType.EXPR_START)) {
-                // Peek ahead to check for end/else keywords
-                if (isExprKeyword(TokenType.KEYWORD_END) || isExprKeyword(TokenType.KEYWORD_ELSE)) {
+                // Peek ahead to check for end/else/case/default keywords
+                if (isExprKeyword(TokenType.KEYWORD_END)
+                        || isExprKeyword(TokenType.KEYWORD_ELSE)
+                        || isExprKeyword(TokenType.KEYWORD_CASE)
+                        || isExprKeyword(TokenType.KEYWORD_DEFAULT)) {
                     break;
                 }
                 children.add(parseTemplateExpression());
@@ -100,6 +103,12 @@ public class Parser {
             case KEYWORD_WIDGET -> parseWidgetCall(start);
             case KEYWORD_FRAGMENT -> parseFragmentBlock(start);
             case KEYWORD_CONTENT -> parseContent(start);
+            case KEYWORD_SET -> parseSet(start);
+            case KEYWORD_SWITCH -> parseSwitchBlock(start);
+            case KEYWORD_SLOT -> parseSlotBlock(start);
+            case KEYWORD_BLOCK -> parseBlockBlock(start);
+            case KEYWORD_STACK -> parseStack(start);
+            case KEYWORD_PUSH -> parsePushBlock(start);
             default -> parseExpressionOutput(start);
         };
     }
@@ -272,6 +281,111 @@ public class Parser {
         return new ContentNode(start);
     }
 
+    private SetNode parseSet(SourceLocation start) {
+        consume(); // set keyword
+        Token name = expect(TokenType.IDENTIFIER, "variable name");
+        expect(TokenType.EQUALS_SIGN, "'='");
+        Expression value = parseExpression();
+        expect(TokenType.EXPR_END, "'}}'");
+        return new SetNode(name.value(), value, start);
+    }
+
+    private SwitchNode parseSwitchBlock(SourceLocation start) {
+        consume(); // switch keyword
+        Expression subject = parseExpression();
+        expect(TokenType.EXPR_END, "'}}'");
+
+        List<SwitchNode.CaseBranch> cases = new ArrayList<>();
+        BodyNode defaultBody = null;
+
+        // Parse case/default branches until end
+        while (!isAtEnd()) {
+            // Skip HTML between switch and first case (usually whitespace)
+            if (check(TokenType.HTML)) {
+                consume();
+                continue;
+            }
+
+            if (isExprKeyword(TokenType.KEYWORD_CASE)) {
+                expect(TokenType.EXPR_START, "'{{'");
+                consume(); // case keyword
+                Expression caseValue = parseExpression();
+                expect(TokenType.EXPR_END, "'}}'");
+                BodyNode caseBody = parseBodyUntilEndOrElse();
+                cases.add(new SwitchNode.CaseBranch(caseValue, caseBody));
+            } else if (isExprKeyword(TokenType.KEYWORD_DEFAULT)) {
+                expect(TokenType.EXPR_START, "'{{'");
+                consume(); // default keyword
+                expect(TokenType.EXPR_END, "'}}'");
+                defaultBody = parseBodyUntilEndOrElse();
+            } else if (isExprKeyword(TokenType.KEYWORD_END)) {
+                break;
+            } else {
+                break;
+            }
+        }
+
+        // Consume {{ end }}
+        expect(TokenType.EXPR_START, "'{{'");
+        expect(TokenType.KEYWORD_END, "'end'");
+        expect(TokenType.EXPR_END, "'}}'");
+
+        return new SwitchNode(subject, cases, defaultBody, start);
+    }
+
+    private SlotNode parseSlotBlock(SourceLocation start) {
+        consume(); // slot keyword
+        Token name = expect(TokenType.STRING_LITERAL, "slot name");
+        expect(TokenType.EXPR_END, "'}}'");
+
+        // Check if this is a self-closing slot (next is {{ end }}) or has default content
+        BodyNode defaultContent = parseBodyUntilEndOrElse();
+
+        // Consume {{ end }}
+        expect(TokenType.EXPR_START, "'{{'");
+        expect(TokenType.KEYWORD_END, "'end'");
+        expect(TokenType.EXPR_END, "'}}'");
+
+        return new SlotNode(name.value(), defaultContent, start);
+    }
+
+    private BlockNode parseBlockBlock(SourceLocation start) {
+        consume(); // block keyword
+        Token name = expect(TokenType.STRING_LITERAL, "block name");
+        expect(TokenType.EXPR_END, "'}}'");
+
+        BodyNode body = parseBodyUntilEndOrElse();
+
+        // Consume {{ end }}
+        expect(TokenType.EXPR_START, "'{{'");
+        expect(TokenType.KEYWORD_END, "'end'");
+        expect(TokenType.EXPR_END, "'}}'");
+
+        return new BlockNode(name.value(), body, start);
+    }
+
+    private StackNode parseStack(SourceLocation start) {
+        consume(); // stack keyword
+        Token name = expect(TokenType.STRING_LITERAL, "stack name");
+        expect(TokenType.EXPR_END, "'}}'");
+        return new StackNode(name.value(), start);
+    }
+
+    private PushNode parsePushBlock(SourceLocation start) {
+        consume(); // push keyword
+        Token name = expect(TokenType.STRING_LITERAL, "stack name");
+        expect(TokenType.EXPR_END, "'}}'");
+
+        BodyNode body = parseBodyUntilEndOrElse();
+
+        // Consume {{ end }}
+        expect(TokenType.EXPR_START, "'{{'");
+        expect(TokenType.KEYWORD_END, "'end'");
+        expect(TokenType.EXPR_END, "'}}'");
+
+        return new PushNode(name.value(), body, start);
+    }
+
     private ExpressionOutputNode parseExpressionOutput(SourceLocation start) {
         Expression expr = parseExpression();
         expect(TokenType.EXPR_END, "'}}'");
@@ -285,7 +399,8 @@ public class Parser {
         List<Token> exprTokens = new ArrayList<>();
         while (!check(TokenType.EXPR_END) && !isAtEnd()) {
             TokenType t = peek().type();
-            if (t == TokenType.KEYWORD_END || t == TokenType.KEYWORD_ELSE) break;
+            if (t == TokenType.KEYWORD_END || t == TokenType.KEYWORD_ELSE
+                    || t == TokenType.KEYWORD_CASE || t == TokenType.KEYWORD_DEFAULT) break;
             exprTokens.add(consume());
         }
 

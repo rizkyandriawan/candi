@@ -5,18 +5,26 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>candi</groupId>
+        <groupId>dev.kakrizky.candi</groupId>
         <artifactId>candi-parent</artifactId>
-        <version>0.1.0-SNAPSHOT</version>
+        <version>0.1.0</version>
     </parent>
 
     <artifactId>candi-demo</artifactId>
+
+    <properties>
+        <maven.deploy.skip>true</maven.deploy.skip>
+        <maven.install.skip>true</maven.install.skip>
+        <gpg.skip>true</gpg.skip>
+        <maven.javadoc.skip>true</maven.javadoc.skip>
+        <maven.source.skip>true</maven.source.skip>
+    </properties>
     <name>Candi Demo</name>
     <description>Demo application with hand-compiled Candi pages and integration tests</description>
 
     <dependencies>
         <dependency>
-            <groupId>candi</groupId>
+            <groupId>dev.kakrizky.candi</groupId>
             <artifactId>candi-runtime</artifactId>
             <version>${project.version}</version>
         </dependency>

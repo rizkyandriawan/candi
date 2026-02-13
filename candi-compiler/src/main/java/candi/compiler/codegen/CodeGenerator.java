@@ -21,6 +21,7 @@ public class CodeGenerator {
     private final String className;
     private final StringBuilder sb = new StringBuilder();
     private int indent = 0;
+    private int tempVarCounter = 0;
 
     public CodeGenerator(PageNode page, String packageName, String className) {
         this.page = page;
@@ -181,15 +182,39 @@ public class CodeGenerator {
         indent++;
         if (page.layoutName() != null) {
             String layoutField = layoutFieldName(page.layoutName());
+            // Collect blocks for named slot dispatch
+            List<BlockNode> blocks = collectBlocks(page.body());
             line(layoutField + ".render(out, (slotName, slotOut) -> {");
             indent++;
-            line("if (\"content\".equals(slotName)) {");
-            indent++;
-            if (page.body() != null) {
-                generateBodyNodes(page.body().children());
+            if (blocks.isEmpty()) {
+                line("if (\"content\".equals(slotName)) {");
+                indent++;
+                if (page.body() != null) {
+                    generateBodyNodes(page.body().children());
+                }
+                indent--;
+                line("}");
+            } else {
+                line("switch (slotName) {");
+                indent++;
+                line("case \"content\" -> {");
+                indent++;
+                if (page.body() != null) {
+                    generateBodyNodes(page.body().children());
+                }
+                indent--;
+                line("}");
+                for (BlockNode block : blocks) {
+                    line("case \"" + escapeJavaString(block.name()) + "\" -> {");
+                    indent++;
+                    generateBodyNodes(block.body().children());
+                    indent--;
+                    line("}");
+                }
+                line("default -> {}");
+                indent--;
+                line("}");
             }
-            indent--;
-            line("}");
             indent--;
             line("});");
         } else if (page.body() != null) {
@@ -371,6 +396,12 @@ public class CodeGenerator {
             case ComponentCallNode call -> generateWidgetCall(call);
             case FragmentNode fragment -> generateBodyNodes(fragment.body().children());
             case ContentNode content -> generateContent(content);
+            case SetNode set -> generateSet(set);
+            case SwitchNode sw -> generateSwitch(sw);
+            case SlotNode slot -> generateSlot(slot);
+            case BlockNode block -> generateBlock(block);
+            case StackNode stack -> generateStack(stack);
+            case PushNode push -> generatePush(push);
             default -> throw new IllegalStateException("Unexpected node in body: " + node.getClass());
         }
     }
@@ -409,9 +440,22 @@ public class CodeGenerator {
 
     private void generateFor(ForNode node) {
         String collection = generateExpression(node.collection());
-        line("for (var " + node.variableName() + " : " + collection + ") {");
+        String varName = node.variableName();
+        String listVar = "_list_" + varName;
+        String indexVar = varName + "_index";
+        String firstVar = varName + "_first";
+        String lastVar = varName + "_last";
+        line("{");
         indent++;
+        line("var " + listVar + " = new java.util.ArrayList<>(java.util.Collection.class.isInstance(" + collection + ") ? (java.util.Collection<?>) " + collection + " : java.util.List.of());");
+        line("for (int " + indexVar + " = 0; " + indexVar + " < " + listVar + ".size(); " + indexVar + "++) {");
+        indent++;
+        line("var " + varName + " = " + listVar + ".get(" + indexVar + ");");
+        line("boolean " + firstVar + " = (" + indexVar + " == 0);");
+        line("boolean " + lastVar + " = (" + indexVar + " == " + listVar + ".size() - 1);");
         generateBodyNodes(node.body().children());
+        indent--;
+        line("}");
         indent--;
         line("}");
     }
@@ -440,6 +484,101 @@ public class CodeGenerator {
 
     private void generateContent(ContentNode node) {
         line("slots.renderSlot(\"content\", out);");
+    }
+
+    private void generateSet(SetNode node) {
+        String expr = generateExpression(node.value());
+        line("var " + node.variableName() + " = " + expr + ";");
+    }
+
+    private void generateSwitch(SwitchNode node) {
+        String subject = generateExpression(node.subject());
+        String tmpVar = "_sw" + (tempVarCounter++);
+        line("{");
+        indent++;
+        line("var " + tmpVar + " = " + subject + ";");
+        boolean first = true;
+        for (SwitchNode.CaseBranch branch : node.cases()) {
+            String caseVal = generateExpression(branch.value());
+            if (first) {
+                line("if (java.util.Objects.equals(" + tmpVar + ", " + caseVal + ")) {");
+                first = false;
+            } else {
+                line("} else if (java.util.Objects.equals(" + tmpVar + ", " + caseVal + ")) {");
+            }
+            indent++;
+            generateBodyNodes(branch.body().children());
+            indent--;
+        }
+        if (node.defaultBody() != null) {
+            if (first) {
+                generateBodyNodes(node.defaultBody().children());
+            } else {
+                line("} else {");
+                indent++;
+                generateBodyNodes(node.defaultBody().children());
+                indent--;
+                line("}");
+            }
+        } else if (!first) {
+            line("}");
+        }
+        indent--;
+        line("}");
+    }
+
+    private void generateSlot(SlotNode node) {
+        String slotName = node.name();
+        line("{");
+        indent++;
+        line("int _before = out.length();");
+        line("slots.renderSlot(\"" + escapeJavaString(slotName) + "\", out);");
+        line("if (out.length() == _before) {");
+        indent++;
+        if (node.defaultContent() != null) {
+            generateBodyNodes(node.defaultContent().children());
+        }
+        indent--;
+        line("}");
+        indent--;
+        line("}");
+    }
+
+    private void generateBlock(BlockNode node) {
+        generateBodyNodes(node.body().children());
+    }
+
+    private void generateStack(StackNode node) {
+        line("out.renderStack(\"" + escapeJavaString(node.name()) + "\");");
+    }
+
+    private void generatePush(PushNode node) {
+        String tmpVar = "_push" + (tempVarCounter++);
+        line("{");
+        indent++;
+        line("HtmlOutput " + tmpVar + " = new HtmlOutput();");
+        for (Node child : node.body().children()) {
+            switch (child) {
+                case HtmlNode html -> {
+                    String content = html.content();
+                    if (!content.isEmpty()) {
+                        line(tmpVar + ".append(\"" + escapeJavaString(content) + "\");");
+                    }
+                }
+                case ExpressionOutputNode expr -> {
+                    String javaExpr = generateExpression(expr.expression());
+                    line(tmpVar + ".appendEscaped(String.valueOf(" + javaExpr + "));");
+                }
+                case RawExpressionOutputNode raw -> {
+                    String javaExpr = generateExpression(raw.expression());
+                    line(tmpVar + ".append(String.valueOf(" + javaExpr + "));");
+                }
+                default -> generateBodyNode(child);
+            }
+        }
+        line("out.pushStack(\"" + escapeJavaString(node.name()) + "\", " + tmpVar + ".toHtml());");
+        indent--;
+        line("}");
     }
 
     // ========== Fragment Code Generation ==========
@@ -499,6 +638,29 @@ public class CodeGenerator {
         }
     }
 
+    private List<BlockNode> collectBlocks(BodyNode body) {
+        List<BlockNode> blocks = new ArrayList<>();
+        if (body != null) {
+            collectBlocksFromNodes(body.children(), blocks);
+        }
+        return blocks;
+    }
+
+    private void collectBlocksFromNodes(List<Node> nodes, List<BlockNode> blocks) {
+        for (Node node : nodes) {
+            if (node instanceof BlockNode b) {
+                blocks.add(b);
+            } else if (node instanceof IfNode ifNode) {
+                collectBlocksFromNodes(ifNode.thenBody().children(), blocks);
+                if (ifNode.elseBody() != null) {
+                    collectBlocksFromNodes(ifNode.elseBody().children(), blocks);
+                }
+            } else if (node instanceof ForNode forNode) {
+                collectBlocksFromNodes(forNode.body().children(), blocks);
+            }
+        }
+    }
+
     // ========== Expression Code Generation ==========
 
     private String generateExpression(Expression expr) {
@@ -545,6 +707,8 @@ public class CodeGenerator {
                     yield "Objects.equals(" + left + ", " + right + ")";
                 } else if ("!=".equals(b.operator())) {
                     yield "!Objects.equals(" + left + ", " + right + ")";
+                } else if ("~".equals(b.operator())) {
+                    yield "(String.valueOf(" + left + ") + String.valueOf(" + right + "))";
                 } else {
                     yield "(" + left + " " + b.operator() + " " + right + ")";
                 }
@@ -553,7 +717,41 @@ public class CodeGenerator {
                 String operand = generateExpression(u.operand());
                 yield "!(" + operand + ")";
             }
+            case Expression.UnaryMinus u -> {
+                String operand = generateExpression(u.operand());
+                yield "(-(" + operand + "))";
+            }
             case Expression.Grouped g -> "(" + generateExpression(g.inner()) + ")";
+            case Expression.Ternary t -> {
+                String cond = generateExpression(t.condition());
+                String then = generateExpression(t.thenExpr());
+                String els = generateExpression(t.elseExpr());
+                yield "(" + wrapBooleanCondition(t.condition(), cond) + " ? " + then + " : " + els + ")";
+            }
+            case Expression.NullCoalesce nc -> {
+                String left = generateExpression(nc.left());
+                String fallback = generateExpression(nc.fallback());
+                yield "(" + left + " != null ? " + left + " : " + fallback + ")";
+            }
+            case Expression.FilterCall f -> {
+                String input = generateExpression(f.input());
+                String filterName = f.filterName();
+                String methodName = "default".equals(filterName) ? "defaultVal" : filterName;
+                if (f.arguments().isEmpty()) {
+                    yield "candi.runtime.CandiFilters." + methodName + "(" + input + ")";
+                } else {
+                    String args = f.arguments().stream()
+                            .map(this::generateExpression)
+                            .reduce((a, b2) -> a + ", " + b2)
+                            .orElse("");
+                    yield "candi.runtime.CandiFilters." + methodName + "(" + input + ", " + args + ")";
+                }
+            }
+            case Expression.IndexAccess ia -> {
+                String obj = generateExpression(ia.object());
+                String idx = generateExpression(ia.index());
+                yield "candi.runtime.CandiRuntime.index(" + obj + ", " + idx + ")";
+            }
         };
     }
 
@@ -565,6 +763,9 @@ public class CodeGenerator {
             return javaExpr;
         }
         if (expr instanceof Expression.MethodCall) {
+            return javaExpr;
+        }
+        if (expr instanceof Expression.Ternary) {
             return javaExpr;
         }
         return javaExpr + " != null && !Boolean.FALSE.equals(" + javaExpr + ")";

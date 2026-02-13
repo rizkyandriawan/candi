@@ -5,9 +5,9 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>candi</groupId>
+        <groupId>dev.kakrizky.candi</groupId>
         <artifactId>candi-parent</artifactId>
-        <version>0.1.0-SNAPSHOT</version>
+        <version>0.1.0</version>
     </parent>
 
     <artifactId>candi-spring-boot-starter</artifactId>
@@ -17,14 +17,14 @@
     <dependencies>
         <!-- Core runtime -->
         <dependency>
-            <groupId>candi</groupId>
+            <groupId>dev.kakrizky.candi</groupId>
             <artifactId>candi-runtime</artifactId>
             <version>${project.version}</version>
         </dependency>
 
         <!-- Dev tools (optional — only activated when on classpath + candi.dev=true) -->
         <dependency>
-            <groupId>candi</groupId>
+            <groupId>dev.kakrizky.candi</groupId>
             <artifactId>candi-dev-tools</artifactId>
             <version>${project.version}</version>
             <optional>true</optional>

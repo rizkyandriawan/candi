@@ -1,6 +1,7 @@
 package candi.compiler.codegen;
 
 import candi.compiler.JavaAnalyzer;
+import candi.compiler.ast.BlockNode;
 import candi.compiler.ast.BodyNode;
 import candi.compiler.ast.FragmentNode;
 
@@ -135,18 +136,47 @@ public class SubclassCodeGenerator {
         bodyRenderer.setIndent(indent);
         if (input.layoutName != null) {
             String layoutField = layoutFieldName(input.layoutName);
+            List<BlockNode> blocks = bodyRenderer.collectBlocks(input.body);
             line(layoutField + ".render(out, (slotName, slotOut) -> {");
             indent++;
             bodyRenderer.setIndent(indent);
-            line("if (\"content\".equals(slotName)) {");
-            indent++;
-            bodyRenderer.setIndent(indent);
-            if (input.body != null) {
-                bodyRenderer.renderBodyNodes(input.body.children());
+            if (blocks.isEmpty()) {
+                line("if (\"content\".equals(slotName)) {");
+                indent++;
+                bodyRenderer.setIndent(indent);
+                if (input.body != null) {
+                    bodyRenderer.renderBodyNodes(input.body.children());
+                }
+                indent--;
+                bodyRenderer.setIndent(indent);
+                line("}");
+            } else {
+                line("switch (slotName) {");
+                indent++;
+                bodyRenderer.setIndent(indent);
+                line("case \"content\" -> {");
+                indent++;
+                bodyRenderer.setIndent(indent);
+                if (input.body != null) {
+                    bodyRenderer.renderBodyNodes(input.body.children());
+                }
+                indent--;
+                bodyRenderer.setIndent(indent);
+                line("}");
+                for (BlockNode block : blocks) {
+                    line("case \"" + CodeGenerator.escapeJavaString(block.name()) + "\" -> {");
+                    indent++;
+                    bodyRenderer.setIndent(indent);
+                    bodyRenderer.renderBodyNodes(block.body().children());
+                    indent--;
+                    bodyRenderer.setIndent(indent);
+                    line("}");
+                }
+                line("default -> {}");
+                indent--;
+                bodyRenderer.setIndent(indent);
+                line("}");
             }
-            indent--;
-            bodyRenderer.setIndent(indent);
-            line("}");
             indent--;
             bodyRenderer.setIndent(indent);
             line("});");

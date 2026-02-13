@@ -26,6 +26,9 @@ public class Lexer {
     private String templateSource;
     private int templateStartLine;
 
+    // Whitespace control: when true, trim leading whitespace from next HTML token
+    private boolean trimNextHtmlLeading = false;
+
     public Lexer(String source, String fileName) {
         this.source = source;
         this.fileName = fileName;
@@ -252,10 +255,45 @@ public class Lexer {
         if (pos >= templateSource.length()) return;
 
         if (lookingAt("{{")) {
-            lexTemplateExpression();
+            // Check for comment: {{-- ... --}}
+            if (pos + 3 < templateSource.length()
+                    && templateSource.charAt(pos + 2) == '-'
+                    && templateSource.charAt(pos + 3) == '-') {
+                lexComment();
+                return;
+            }
+            // Check for whitespace-trimming open: {{-
+            // (but not {{-- which is a comment)
+            if (pos + 2 < templateSource.length()
+                    && templateSource.charAt(pos + 2) == '-'
+                    && (pos + 3 >= templateSource.length() || templateSource.charAt(pos + 3) != '-')) {
+                lexTemplateExpression(true);
+                return;
+            }
+            lexTemplateExpression(false);
         } else {
             lexHtml();
         }
+    }
+
+    /**
+     * Consume a template comment {{-- ... --}} without emitting any tokens.
+     */
+    private void lexComment() {
+        // Skip {{--
+        advance(); advance(); advance(); advance();
+        while (pos + 3 < templateSource.length()) {
+            if (templateSource.charAt(pos) == '-'
+                    && templateSource.charAt(pos + 1) == '-'
+                    && templateSource.charAt(pos + 2) == '}'
+                    && templateSource.charAt(pos + 3) == '}') {
+                advance(); advance(); advance(); advance(); // skip --}}
+                return;
+            }
+            advance();
+        }
+        // If we reach here, comment was never closed — consume remaining
+        while (pos < templateSource.length()) advance();
     }
 
     private void lexHtml() {
@@ -266,22 +304,34 @@ public class Lexer {
             advance();
         }
         if (!sb.isEmpty()) {
-            tokens.add(new Token(TokenType.HTML, sb.toString(), start));
+            String content = sb.toString();
+            // Apply whitespace trimming if flagged from previous -}}
+            if (trimNextHtmlLeading) {
+                content = trimLeadingWhitespace(content);
+                trimNextHtmlLeading = false;
+            }
+            if (!content.isEmpty()) {
+                tokens.add(new Token(TokenType.HTML, content, start));
+            }
         }
     }
 
-    private void lexTemplateExpression() {
+    private void lexTemplateExpression(boolean trimLeft) {
         SourceLocation start = loc();
         advance(); // {
         advance(); // {
+        if (trimLeft) {
+            advance(); // - (the trim marker)
+            // Retroactively trim trailing whitespace from the last HTML token
+            trimLastHtmlTokenTrailing();
+        }
         tokens.add(new Token(TokenType.EXPR_START, "{{", start));
 
         skipWhitespace();
 
         // Check for keywords
-        if (pos >= templateSource.length() || lookingAt("}}")) {
-            tokens.add(new Token(TokenType.EXPR_END, "}}", loc()));
-            if (pos < templateSource.length()) { advance(); advance(); }
+        if (pos >= templateSource.length() || lookingAt("}}") || lookingAt("-}}")) {
+            emitExprEnd();
             return;
         }
 
@@ -376,15 +426,142 @@ public class Lexer {
                 advance("content".length());
                 tokens.add(new Token(TokenType.KEYWORD_CONTENT, "content", start));
             }
+            case "set" -> {
+                advance("set".length());
+                tokens.add(new Token(TokenType.KEYWORD_SET, "set", start));
+                skipWhitespace();
+                lexExpressionTokensUntilClose();
+            }
+            case "switch" -> {
+                advance("switch".length());
+                tokens.add(new Token(TokenType.KEYWORD_SWITCH, "switch", start));
+                skipWhitespace();
+                lexExpressionTokensUntilClose();
+            }
+            case "case" -> {
+                advance("case".length());
+                tokens.add(new Token(TokenType.KEYWORD_CASE, "case", start));
+                skipWhitespace();
+                lexExpressionTokensUntilClose();
+            }
+            case "default" -> {
+                advance("default".length());
+                tokens.add(new Token(TokenType.KEYWORD_DEFAULT, "default", start));
+            }
+            case "verbatim" -> {
+                advance("verbatim".length());
+                // Remove the EXPR_START token that was already emitted (verbatim is handled entirely in lexer)
+                if (!tokens.isEmpty() && tokens.getLast().type() == TokenType.EXPR_START) {
+                    tokens.removeLast();
+                }
+                // Consume the closing }}
+                skipWhitespace();
+                if (lookingAt("-}}")) {
+                    advance(); advance(); advance();
+                    trimNextHtmlLeading = true;
+                } else if (lookingAt("}}")) {
+                    advance(); advance();
+                } else {
+                    throw error("Expected '}}' after verbatim");
+                }
+                // Now consume everything until {{ end }} as raw HTML
+                lexVerbatimContent();
+                return; // lexVerbatimContent handles everything including {{ end }}
+            }
+            case "slot" -> {
+                advance("slot".length());
+                tokens.add(new Token(TokenType.KEYWORD_SLOT, "slot", start));
+                skipWhitespace();
+                tokens.add(readStringLiteral());
+            }
+            case "block" -> {
+                advance("block".length());
+                tokens.add(new Token(TokenType.KEYWORD_BLOCK, "block", start));
+                skipWhitespace();
+                tokens.add(readStringLiteral());
+            }
+            case "stack" -> {
+                advance("stack".length());
+                tokens.add(new Token(TokenType.KEYWORD_STACK, "stack", start));
+                skipWhitespace();
+                tokens.add(readStringLiteral());
+            }
+            case "push" -> {
+                advance("push".length());
+                tokens.add(new Token(TokenType.KEYWORD_PUSH, "push", start));
+                skipWhitespace();
+                tokens.add(readStringLiteral());
+            }
             default -> {
                 // Regular expression output
                 lexExpressionTokensUntilClose();
             }
         }
 
-        // Consume closing }}
+        // Consume closing }} (possibly with whitespace-trimming -}})
+        emitExprEnd();
+    }
+
+    /**
+     * Consume everything until {{ end }} as a single HTML token (verbatim block).
+     * No tokens are emitted for the verbatim/end markers themselves.
+     */
+    private void lexVerbatimContent() {
+        SourceLocation start = loc();
+        StringBuilder sb = new StringBuilder();
+        while (pos < templateSource.length()) {
+            // Look for {{ end }}
+            if (lookingAt("{{")) {
+                int saved = pos;
+                int savedLine = line;
+                int savedCol = col;
+                advance(); advance(); // skip {{
+                // Check for optional trim marker
+                if (pos < templateSource.length() && peek() == '-') advance();
+                skipWhitespace();
+                if (peekIdentifier().equals("end")) {
+                    advance("end".length());
+                    skipWhitespace();
+                    // Check for -}} or }}
+                    if (lookingAt("-}}")) {
+                        advance(); advance(); advance();
+                        trimNextHtmlLeading = true;
+                    } else if (lookingAt("}}")) {
+                        advance(); advance();
+                    }
+                    // Emit verbatim content as HTML
+                    if (!sb.isEmpty()) {
+                        tokens.add(new Token(TokenType.HTML, sb.toString(), start));
+                    }
+                    return;
+                }
+                // Not {{ end }}, restore and continue
+                pos = saved;
+                line = savedLine;
+                col = savedCol;
+            }
+            sb.append(peek());
+            advance();
+        }
+        // Unterminated verbatim — emit what we have
+        if (!sb.isEmpty()) {
+            tokens.add(new Token(TokenType.HTML, sb.toString(), start));
+        }
+    }
+
+    /**
+     * Emit EXPR_END token, handling whitespace-trimming -}}.
+     */
+    private void emitExprEnd() {
         skipWhitespace();
-        if (lookingAt("}}")) {
+        if (lookingAt("-}}")) {
+            SourceLocation endLoc = loc();
+            advance(); // -
+            advance(); // }
+            advance(); // }
+            tokens.add(new Token(TokenType.EXPR_END, "}}", endLoc));
+            trimNextHtmlLeading = true;
+        } else if (lookingAt("}}")) {
             SourceLocation endLoc = loc();
             advance();
             advance();
@@ -394,10 +571,46 @@ public class Lexer {
         }
     }
 
+    /**
+     * Trim trailing whitespace (including newline) from the last HTML token.
+     */
+    private void trimLastHtmlTokenTrailing() {
+        for (int i = tokens.size() - 1; i >= 0; i--) {
+            Token t = tokens.get(i);
+            if (t.type() == TokenType.HTML) {
+                String trimmed = trimTrailingWhitespace(t.value());
+                if (trimmed.isEmpty()) {
+                    tokens.remove(i);
+                } else {
+                    tokens.set(i, new Token(TokenType.HTML, trimmed, t.location()));
+                }
+                break;
+            } else if (t.type() != TokenType.EXPR_END && t.type() != TokenType.EXPR_START) {
+                break; // only trim adjacent HTML
+            }
+        }
+    }
+
+    private static String trimTrailingWhitespace(String s) {
+        int end = s.length();
+        while (end > 0 && isWhitespace(s.charAt(end - 1))) {
+            end--;
+        }
+        return s.substring(0, end);
+    }
+
+    private static String trimLeadingWhitespace(String s) {
+        int start = 0;
+        while (start < s.length() && isWhitespace(s.charAt(start))) {
+            start++;
+        }
+        return s.substring(start);
+    }
+
     private void lexKeyValueParams() {
-        while (pos < templateSource.length() && !lookingAt("}}")) {
+        while (pos < templateSource.length() && !lookingAt("}}") && !lookingAt("-}}")) {
             skipWhitespace();
-            if (lookingAt("}}")) break;
+            if (lookingAt("}}") || lookingAt("-}}")) break;
 
             // key=value
             SourceLocation keyLoc = loc();
@@ -419,22 +632,22 @@ public class Lexer {
 
     private void lexSingleExpressionTokens() {
         // Lex expression tokens for a single expression (stops at whitespace or }})
-        while (pos < templateSource.length() && !lookingAt("}}") && !isWhitespace(peek())) {
+        while (pos < templateSource.length() && !lookingAt("}}") && !lookingAt("-}}") && !isWhitespace(peek())) {
             lexOneExpressionToken();
         }
     }
 
     private void lexExpressionTokensUntilClose() {
-        while (pos < templateSource.length() && !lookingAt("}}")) {
+        while (pos < templateSource.length() && !lookingAt("}}") && !lookingAt("-}}")) {
             skipWhitespace();
-            if (lookingAt("}}")) break;
+            if (lookingAt("}}") || lookingAt("-}}")) break;
             lexOneExpressionToken();
         }
     }
 
     private void lexOneExpressionToken() {
         skipWhitespace();
-        if (pos >= templateSource.length() || lookingAt("}}")) return;
+        if (pos >= templateSource.length() || lookingAt("}}") || lookingAt("-}}")) return;
 
         SourceLocation tokLoc = loc();
         char c = peek();
@@ -449,9 +662,16 @@ public class Lexer {
                 if (pos < templateSource.length() && peek() == '.') {
                     advance();
                     tokens.add(new Token(TokenType.NULL_SAFE_DOT, "?.", tokLoc));
+                } else if (pos < templateSource.length() && peek() == '?') {
+                    advance();
+                    tokens.add(new Token(TokenType.NULL_COALESCE, "??", tokLoc));
                 } else {
-                    throw error("Expected '.' after '?'", tokLoc);
+                    tokens.add(new Token(TokenType.QUESTION, "?", tokLoc));
                 }
+            }
+            case ':' -> {
+                advance();
+                tokens.add(new Token(TokenType.COLON, ":", tokLoc));
             }
             case '(' -> {
                 advance();
@@ -460,6 +680,14 @@ public class Lexer {
             case ')' -> {
                 advance();
                 tokens.add(new Token(TokenType.RPAREN, ")", tokLoc));
+            }
+            case '[' -> {
+                advance();
+                tokens.add(new Token(TokenType.LBRACKET, "[", tokLoc));
+            }
+            case ']' -> {
+                advance();
+                tokens.add(new Token(TokenType.RBRACKET, "]", tokLoc));
             }
             case ',' -> {
                 advance();
@@ -516,8 +744,32 @@ public class Lexer {
                     advance();
                     tokens.add(new Token(TokenType.OR, "||", tokLoc));
                 } else {
-                    throw error("Expected '||', got single '|'", tokLoc);
+                    tokens.add(new Token(TokenType.PIPE, "|", tokLoc));
                 }
+            }
+            case '+' -> {
+                advance();
+                tokens.add(new Token(TokenType.PLUS, "+", tokLoc));
+            }
+            case '-' -> {
+                advance();
+                tokens.add(new Token(TokenType.MINUS, "-", tokLoc));
+            }
+            case '*' -> {
+                advance();
+                tokens.add(new Token(TokenType.STAR, "*", tokLoc));
+            }
+            case '/' -> {
+                advance();
+                tokens.add(new Token(TokenType.SLASH, "/", tokLoc));
+            }
+            case '%' -> {
+                advance();
+                tokens.add(new Token(TokenType.PERCENT, "%", tokLoc));
+            }
+            case '~' -> {
+                advance();
+                tokens.add(new Token(TokenType.TILDE, "~", tokLoc));
             }
             case '"' -> {
                 tokens.add(readStringLiteral());
