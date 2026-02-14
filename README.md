@@ -27,9 +27,11 @@
 Candi brings back PHP's fullstack-in-one-file workflow, built on Spring Boot:
 
 ```java
+@Getter @Setter
 @Page("/posts")
 @Template("""
 <h1>All Posts</h1>
+<input name="q" value="{{ q }}">
 {{ for post in posts }}
   <article>
     <h2>{{ post.title }}</h2>
@@ -43,9 +45,10 @@ Candi brings back PHP's fullstack-in-one-file workflow, built on Spring Boot:
 public class PostsPage {
 
     @Autowired private PostService svc;
+    @RequestParam(defaultValue = "") String q;
     private List<Post> posts;
 
-    public void init() { posts = svc.findAll(); }
+    public void init() { posts = svc.search(q); }  // q auto-populated
 
     @Post
     public ActionResult create() {
@@ -65,20 +68,20 @@ One file. Route, injection, data loading, form handling, HTML — all in one pla
 <dependency>
     <groupId>dev.kakrizky.candi</groupId>
     <artifactId>candi-spring-boot-starter</artifactId>
-    <version>0.1.0</version>
+    <version>0.2.0</version>
 </dependency>
 <dependency>
     <groupId>dev.kakrizky.candi</groupId>
     <artifactId>candi-processor</artifactId>
-    <version>0.1.0</version>
+    <version>0.2.0</version>
     <scope>provided</scope>
 </dependency>
 ```
 
 ```groovy
 // Gradle
-implementation 'dev.kakrizky.candi:candi-spring-boot-starter:0.1.0'
-annotationProcessor 'dev.kakrizky.candi:candi-processor:0.1.0'
+implementation 'dev.kakrizky.candi:candi-spring-boot-starter:0.2.0'
+annotationProcessor 'dev.kakrizky.candi:candi-processor:0.2.0'
 ```
 
 No plugin config. The annotation processor runs automatically during `javac`.
@@ -107,6 +110,7 @@ Your class stays untouched. The processor generates a `_Candi` subclass with Spr
 | **Core** | Compile-time safety, zero config, real Java with full IDE support |
 | **Template** | Ternary `? :`, null coalescing `??`, arithmetic, filters `\|`, index access `[]`, switch/case |
 | **Layout** | Named slots, asset stacking, reusable widgets |
+| **Data Binding** | Auto `@RequestParam`, `@PathVariable`, `Pageable` — fields populated before `init()` |
 | **Server** | AJAX fragments, hot reload with SSE live refresh, GraalVM support |
 | **DX** | One language, one process, one deploy. Spring DI just works. |
 

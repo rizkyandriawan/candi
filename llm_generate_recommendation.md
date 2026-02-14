@@ -33,7 +33,7 @@ plugins {
 }
 
 group = 'com.example'
-version = '0.1.0'
+version = '0.2.0'
 
 java {
     toolchain {
@@ -52,12 +52,12 @@ dependencies {
     annotationProcessor 'org.projectlombok:lombok'
 
     // Candi framework (REQUIRED)
-    implementation 'dev.kakrizky.candi:candi-spring-boot-starter:0.1.0'
-    annotationProcessor 'dev.kakrizky.candi:candi-processor:0.1.0'
+    implementation 'dev.kakrizky.candi:candi-spring-boot-starter:0.2.0'
+    annotationProcessor 'dev.kakrizky.candi:candi-processor:0.2.0'
 
     // Candi UI plugins (OPTIONAL - built-in widget libraries)
-    implementation 'dev.kakrizky.candi:candi-ui-core:0.1.0'
-    implementation 'dev.kakrizky.candi:candi-ui-forms:0.1.0'
+    implementation 'dev.kakrizky.candi:candi-ui-core:0.2.0'
+    implementation 'dev.kakrizky.candi:candi-ui-forms:0.2.0'
 
     // Spring Boot
     implementation 'org.springframework.boot:spring-boot-starter-web'
@@ -1449,6 +1449,83 @@ public ActionResult handlePost() {
 String currentPath = ctx.uri();  // e.g., "/items/create"
 ```
 
+### Auto Parameter Binding (@RequestParam, @PathVariable, Pageable)
+
+As an alternative to manual `RequestContext` access, Candi supports Spring's `@RequestParam` and `@PathVariable` annotations directly on page fields. Fields are auto-populated before `init()` runs — zero boilerplate.
+
+#### @RequestParam — query parameters
+
+```java
+@Getter @Setter
+@Page(value = "/items", layout = "main")
+@Template("""
+<input type="text" name="q" value="{{ q }}">
+{{ for item in items }}<li>{{ item.name }}</li>{{ end }}
+""")
+public class ItemListPage {
+    @Autowired private ItemService itemService;
+
+    @RequestParam(defaultValue = "") String q;
+    @RequestParam(defaultValue = "1") int page;
+    @RequestParam(defaultValue = "10") int size;
+
+    List<Item> items;
+
+    public void init() {
+        // q, page, size already populated — no manual parsing needed
+        items = itemService.search(q, page, size);
+    }
+}
+```
+
+Supported types: `String`, `int`/`Integer`, `long`/`Long`, `double`/`Double`, `boolean`/`Boolean`.
+
+#### @PathVariable — URL path segments
+
+```java
+@Getter @Setter
+@Page(value = "/items/{id}", layout = "main")
+@Template("""<h1>{{ item.name }}</h1>""")
+public class ItemViewPage {
+    @Autowired private ItemService itemService;
+
+    @PathVariable String id;  // auto-populated from URL
+    Item item;
+
+    public void init() {
+        item = itemService.findById(id);  // id is already set
+    }
+}
+```
+
+#### Pageable — pagination + sorting from query params
+
+Declare a `Pageable` field and it auto-populates from `?page=`, `?size=`, and `?sort=` query parameters:
+
+```java
+@Getter @Setter
+@Page(value = "/items", layout = "main")
+@Template("""...""")
+public class ItemListPage {
+    @Autowired private ItemService itemService;
+
+    private Pageable pageable;  // auto from ?page=0&size=20&sort=name,asc
+    Page<Item> items;
+
+    public void init() {
+        items = itemService.findAll(pageable);
+    }
+}
+```
+
+#### Notes
+
+- Fields must have setters (use Lombok `@Setter`/`@Data`/`@Getter @Setter`, or manual setters).
+- `@RequestParam(required = true)` throws `IllegalArgumentException` if the parameter is missing.
+- **Do not** combine `@Autowired` with `@RequestParam`/`@PathVariable` on the same field.
+- These annotations only work on `@Page` classes (not layouts or widgets).
+- When no `@RequestParam`/`@PathVariable`/`Pageable` fields exist, no overhead is added — backward compatible.
+
 ### ActionResult
 
 Returned from `@Post` methods to control what happens after form submission.
@@ -1545,16 +1622,17 @@ package com.example.myapp.pages.item;
 
 import candi.runtime.Page;
 import candi.runtime.Template;
-import candi.runtime.RequestContext;
 import lombok.Getter;
+import lombok.Setter;
 import lombok.AllArgsConstructor;
 import com.example.myapp.model.Item;
 import com.example.myapp.service.ItemService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.RequestParam;
 import java.util.*;
 import java.util.stream.Collectors;
 
-@Getter
+@Getter @Setter
 @Page(value = "/items", layout = "main")
 @Template("""
 <div class="d-flex justify-content-between align-items-center mb-4">
@@ -1615,10 +1693,10 @@ import java.util.stream.Collectors;
 public class ItemListPage {
 
     @Autowired
-    private RequestContext ctx;
-
-    @Autowired
     private ItemService itemService;
+
+    @RequestParam(defaultValue = "") String searchTerm;
+    @RequestParam(defaultValue = "1") int currentPage;
 
     // Inner POJO for table rows — pre-computed display values
     @Getter
@@ -1633,7 +1711,6 @@ public class ItemListPage {
     }
 
     // Template fields
-    private String searchTerm = "";
     private int totalItems = 0;
     private int startItem = 0;
     private int endItem = 0;
@@ -1644,14 +1721,7 @@ public class ItemListPage {
     private static final int PAGE_SIZE = 10;
 
     public void init() {
-        searchTerm = ctx.query("q") != null ? ctx.query("q") : "";
-
-        int currentPage = 1;
-        String pageParam = ctx.query("page");
-        if (pageParam != null && !pageParam.isEmpty()) {
-            try { currentPage = Integer.parseInt(pageParam); }
-            catch (NumberFormatException ignored) {}
-        }
+        // searchTerm and currentPage are auto-populated from query params
         if (currentPage < 1) currentPage = 1;
 
         // Fetch and filter
@@ -1911,6 +1981,7 @@ import com.example.myapp.service.ItemService;
 import com.example.myapp.service.UomService;
 import org.springframework.beans.factory.annotation.Autowired;
 
+@Getter @Setter
 @Page(value = "/items/{id}", layout = "main")
 @Template("""
 <div class="d-flex justify-content-between align-items-center mb-4">
@@ -1962,9 +2033,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 """)
 public class ItemViewPage {
 
-    @Autowired private RequestContext ctx;
     @Autowired private ItemService itemService;
     @Autowired private UomService uomService;
+
+    @PathVariable String id;  // auto-populated from URL
 
     // Template fields
     Item item;
@@ -1974,7 +2046,6 @@ public class ItemViewPage {
     String formattedUpdatedAt = "-";
 
     public void init() {
-        String id = ctx.path("id");
         if (id != null) {
             item = itemService.findById(id);
         }
@@ -2140,6 +2211,7 @@ for (FunctionalRole role : allRoles) {
 ### DO
 
 - One file per page. Keep the template and logic together.
+- Use `@RequestParam` and `@PathVariable` on fields for auto parameter binding — prefer this over manual `ctx.query()`/`ctx.path()`.
 - Use `init()` for GET data loading. Use `@Post` for form handling.
 - **Add `@Getter` (Lombok) to all page/widget classes** so the generated `_Candi` subclass can access fields.
 - **Use `Boolean` (wrapper)** for boolean template fields, NOT `boolean` (primitive).
@@ -2182,7 +2254,7 @@ for (FunctionalRole role : allRoles) {
 
 ---
 
-## Known Issues & Gotchas (Candi 0.1.0)
+## Known Issues & Gotchas
 
 A consolidated list of non-obvious pitfalls discovered during development. Each entry describes the symptom, root cause, and fix.
 

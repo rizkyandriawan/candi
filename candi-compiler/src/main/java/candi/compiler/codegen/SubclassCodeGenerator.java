@@ -26,6 +26,11 @@ import java.util.*;
 public class SubclassCodeGenerator {
 
     /**
+     * Metadata for a field annotated with @RequestParam.
+     */
+    public record RequestParamInfo(String paramName, String defaultValue, boolean required) {}
+
+    /**
      * Input data for subclass generation. All information needed to generate the _Candi class.
      * Replaces PageNode as the input — the annotation processor constructs this directly.
      */
@@ -38,7 +43,10 @@ public class SubclassCodeGenerator {
             Set<String> fieldNames,
             Map<String, String> fieldTypes,
             Set<String> actionMethods,  // "POST", "DELETE", etc.
-            BodyNode body
+            BodyNode body,
+            Map<String, RequestParamInfo> requestParams,  // fieldName -> info
+            Map<String, String> pathVariables,             // fieldName -> varName
+            Set<String> pageableFields                     // fields of type Pageable
     ) {}
 
     private final SubclassInput input;
@@ -84,6 +92,12 @@ public class SubclassCodeGenerator {
             line("import java.util.Map;");
             line("import java.util.HashMap;");
         }
+        if (hasParamBindings()) {
+            line("import jakarta.servlet.http.HttpServletRequest;");
+            if (!input.pathVariables.isEmpty()) {
+                line("import org.springframework.web.servlet.HandlerMapping;");
+            }
+        }
         line("");
     }
 
@@ -115,10 +129,21 @@ public class SubclassCodeGenerator {
             line("private ApplicationContext _applicationContext;");
         }
 
+        if (hasParamBindings()) {
+            line("");
+            line("@Autowired");
+            line("private HttpServletRequest _request;");
+        }
+
         if (input.layoutName != null) {
             line("");
             line("@Autowired");
             line("private CandiLayout " + layoutFieldName(input.layoutName) + ";");
+        }
+
+        if (hasParamBindings()) {
+            line("");
+            generateInitOverride();
         }
 
         line("");
@@ -278,6 +303,105 @@ public class SubclassCodeGenerator {
         indent--;
         bodyRenderer.setIndent(indent);
         line("}");
+    }
+
+    // ========== Parameter Binding ==========
+
+    private boolean hasParamBindings() {
+        return !input.requestParams.isEmpty()
+                || !input.pathVariables.isEmpty()
+                || !input.pageableFields.isEmpty();
+    }
+
+    private void generateInitOverride() {
+        line("@Override");
+        line("public void init() {");
+        indent++;
+
+        // @PathVariable bindings
+        if (!input.pathVariables.isEmpty()) {
+            line("@SuppressWarnings(\"unchecked\")");
+            line("java.util.Map<String, String> _pathVars = (java.util.Map<String, String>)");
+            line("    _request.getAttribute(HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE);");
+            for (Map.Entry<String, String> entry : input.pathVariables.entrySet()) {
+                String fieldName = entry.getKey();
+                String varName = entry.getValue();
+                String fieldType = input.fieldTypes.get(fieldName);
+                line("{");
+                indent++;
+                line("String _raw = _pathVars != null ? _pathVars.get(\"" + varName + "\") : null;");
+                generateFieldAssignment(fieldName, fieldType, null, false);
+                indent--;
+                line("}");
+            }
+        }
+
+        // @RequestParam bindings
+        for (Map.Entry<String, RequestParamInfo> entry : input.requestParams.entrySet()) {
+            String fieldName = entry.getKey();
+            RequestParamInfo info = entry.getValue();
+            String fieldType = input.fieldTypes.get(fieldName);
+            line("{");
+            indent++;
+            line("String _raw = _request.getParameter(\"" + info.paramName() + "\");");
+            if (info.defaultValue() != null) {
+                line("if (_raw == null || _raw.isEmpty()) _raw = \"" +
+                        CodeGenerator.escapeJavaString(info.defaultValue()) + "\";");
+            } else if (info.required()) {
+                line("if (_raw == null) throw new IllegalArgumentException(\"Required parameter '" +
+                        info.paramName() + "' is missing\");");
+            }
+            generateFieldAssignment(fieldName, fieldType, info.defaultValue(), info.required());
+            indent--;
+            line("}");
+        }
+
+        // Pageable bindings
+        for (String fieldName : input.pageableFields) {
+            line("{");
+            indent++;
+            line("int _page = 0; int _size = 20;");
+            line("String _pageRaw = _request.getParameter(\"page\");");
+            line("String _sizeRaw = _request.getParameter(\"size\");");
+            line("if (_pageRaw != null && !_pageRaw.isEmpty()) _page = Integer.parseInt(_pageRaw);");
+            line("if (_sizeRaw != null && !_sizeRaw.isEmpty()) _size = Integer.parseInt(_sizeRaw);");
+            line("String _sortRaw = _request.getParameter(\"sort\");");
+            line("org.springframework.data.domain.Sort _sort = org.springframework.data.domain.Sort.unsorted();");
+            line("if (_sortRaw != null && !_sortRaw.isEmpty()) {");
+            indent++;
+            line("String[] _parts = _sortRaw.split(\",\");");
+            line("_sort = _parts.length == 2");
+            line("    ? org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.fromString(_parts[1]), _parts[0])");
+            line("    : org.springframework.data.domain.Sort.by(_parts[0]);");
+            indent--;
+            line("}");
+            String setter = "this.set" + Character.toUpperCase(fieldName.charAt(0)) + fieldName.substring(1);
+            line(setter + "(org.springframework.data.domain.PageRequest.of(_page, _size, _sort));");
+            indent--;
+            line("}");
+        }
+
+        line("super.init();");
+        indent--;
+        line("}");
+    }
+
+    private void generateFieldAssignment(String fieldName, String fieldType, String defaultValue, boolean required) {
+        String setter = "this.set" + Character.toUpperCase(fieldName.charAt(0)) + fieldName.substring(1);
+        if (fieldType == null) fieldType = "String";
+
+        switch (fieldType) {
+            case "String" -> line("if (_raw != null) " + setter + "(_raw);");
+            case "int" -> line("if (_raw != null && !_raw.isEmpty()) " + setter + "(Integer.parseInt(_raw));");
+            case "Integer" -> line("if (_raw != null && !_raw.isEmpty()) " + setter + "(Integer.valueOf(_raw));");
+            case "long" -> line("if (_raw != null && !_raw.isEmpty()) " + setter + "(Long.parseLong(_raw));");
+            case "Long" -> line("if (_raw != null && !_raw.isEmpty()) " + setter + "(Long.valueOf(_raw));");
+            case "double" -> line("if (_raw != null && !_raw.isEmpty()) " + setter + "(Double.parseDouble(_raw));");
+            case "Double" -> line("if (_raw != null && !_raw.isEmpty()) " + setter + "(Double.valueOf(_raw));");
+            case "boolean" -> line("if (_raw != null && !_raw.isEmpty()) " + setter + "(Boolean.parseBoolean(_raw));");
+            case "Boolean" -> line("if (_raw != null && !_raw.isEmpty()) " + setter + "(Boolean.valueOf(_raw));");
+            default -> line("if (_raw != null) " + setter + "(_raw);");
+        }
     }
 
     // ========== Helpers ==========

@@ -3,6 +3,7 @@ package candi.processor;
 import candi.compiler.JavaAnalyzer;
 import candi.compiler.ast.BodyNode;
 import candi.compiler.codegen.SubclassCodeGenerator;
+import candi.compiler.codegen.SubclassCodeGenerator.RequestParamInfo;
 import candi.compiler.codegen.SubclassCodeGenerator.SubclassInput;
 import candi.compiler.lexer.Lexer;
 import candi.compiler.lexer.Token;
@@ -80,6 +81,13 @@ public class CandiAnnotationProcessor extends AbstractProcessor {
         // Extract fields
         Set<String> fieldNames = new LinkedHashSet<>();
         Map<String, String> fieldTypes = new LinkedHashMap<>();
+        Map<String, RequestParamInfo> requestParams = new LinkedHashMap<>();
+        Map<String, String> pathVariables = new LinkedHashMap<>();
+        Set<String> pageableFields = new LinkedHashSet<>();
+
+        boolean classHasLombokSetter = hasAnnotation(classElement, "lombok.Setter")
+                || hasAnnotation(classElement, "lombok.Data");
+
         for (Element enclosed : classElement.getEnclosedElements()) {
             if (enclosed.getKind() == ElementKind.FIELD) {
                 VariableElement field = (VariableElement) enclosed;
@@ -92,9 +100,66 @@ public class CandiAnnotationProcessor extends AbstractProcessor {
                 fieldNames.add(fieldName);
                 fieldTypes.put(fieldName, simplifyType(fieldType));
 
+                boolean hasRequestParam = hasAnnotation(field, "org.springframework.web.bind.annotation.RequestParam");
+                boolean hasPathVariable = hasAnnotation(field, "org.springframework.web.bind.annotation.PathVariable");
+                boolean hasAutowired = hasAnnotation(field, "org.springframework.beans.factory.annotation.Autowired");
+                boolean isPageable = fieldType.equals("org.springframework.data.domain.Pageable");
+
+                // Validate: @Autowired conflicts with @RequestParam/@PathVariable
+                if (hasAutowired && (hasRequestParam || hasPathVariable)) {
+                    processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
+                            "Field '" + fieldName + "' cannot have both @Autowired and @RequestParam/@PathVariable.",
+                            field);
+                    continue;
+                }
+
+                // Detect @RequestParam
+                if (hasRequestParam) {
+                    String paramName = extractAnnotationStringValue(field,
+                            "org.springframework.web.bind.annotation.RequestParam", "value");
+                    if (paramName == null || paramName.isEmpty()) {
+                        paramName = extractAnnotationStringValue(field,
+                                "org.springframework.web.bind.annotation.RequestParam", "name");
+                    }
+                    if (paramName == null || paramName.isEmpty()) {
+                        paramName = fieldName;
+                    }
+                    String defaultValue = extractAnnotationStringValue(field,
+                            "org.springframework.web.bind.annotation.RequestParam", "defaultValue");
+                    // Spring uses "\n\t\t\n\t\t\n\uE000\uE001\uE002\n\t\t\t\t\n" as sentinel for "not set"
+                    if (defaultValue != null && defaultValue.contains("\uE000")) {
+                        defaultValue = null;
+                    }
+                    boolean required = extractAnnotationBooleanValue(field,
+                            "org.springframework.web.bind.annotation.RequestParam", "required", true);
+                    requestParams.put(fieldName, new RequestParamInfo(paramName, defaultValue, required));
+                    validateSetterAvailable(classElement, field, fieldName, classHasLombokSetter);
+                }
+
+                // Detect @PathVariable
+                if (hasPathVariable) {
+                    String varName = extractAnnotationStringValue(field,
+                            "org.springframework.web.bind.annotation.PathVariable", "value");
+                    if (varName == null || varName.isEmpty()) {
+                        varName = extractAnnotationStringValue(field,
+                                "org.springframework.web.bind.annotation.PathVariable", "name");
+                    }
+                    if (varName == null || varName.isEmpty()) {
+                        varName = fieldName;
+                    }
+                    pathVariables.put(fieldName, varName);
+                    validateSetterAvailable(classElement, field, fieldName, classHasLombokSetter);
+                }
+
+                // Detect Pageable type
+                if (isPageable) {
+                    pageableFields.add(fieldName);
+                    validateSetterAvailable(classElement, field, fieldName, classHasLombokSetter);
+                }
+
                 // Warn if private field has no getter (unless @Autowired)
                 if (field.getModifiers().contains(Modifier.PRIVATE)
-                        && !hasAnnotation(field, "org.springframework.beans.factory.annotation.Autowired")) {
+                        && !hasAutowired && !hasRequestParam && !hasPathVariable && !isPageable) {
                     String getterName = "get" + Character.toUpperCase(fieldName.charAt(0)) + fieldName.substring(1);
                     if (!hasMethod(classElement, getterName)) {
                         processingEnv.getMessager().printMessage(Diagnostic.Kind.WARNING,
@@ -129,7 +194,8 @@ public class CandiAnnotationProcessor extends AbstractProcessor {
                 className, packageName, fileType,
                 pagePath, layoutName,
                 fieldNames, fieldTypes, actionMethods,
-                body);
+                body,
+                requestParams, pathVariables, pageableFields);
 
         SubclassCodeGenerator generator = new SubclassCodeGenerator(input);
         String generatedSource = generator.generate();
@@ -239,6 +305,51 @@ public class CandiAnnotationProcessor extends AbstractProcessor {
             }
         }
         return false;
+    }
+
+    private void validateSetterAvailable(TypeElement classElement, VariableElement field,
+                                         String fieldName, boolean classHasLombokSetter) {
+        if (!field.getModifiers().contains(Modifier.PRIVATE)) return; // package-private works directly
+        if (classHasLombokSetter || hasAnnotation(field, "lombok.Setter")) return;
+
+        String setterName = "set" + Character.toUpperCase(fieldName.charAt(0)) + fieldName.substring(1);
+        if (!hasMethod(classElement, setterName)) {
+            processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR,
+                    "Private field '" + fieldName + "' with @RequestParam/@PathVariable/Pageable requires a setter '" +
+                    setterName + "()'. Add @Setter (Lombok) or a manual setter.",
+                    field);
+        }
+    }
+
+    private String extractAnnotationStringValue(Element element, String annotationFqn, String attribute) {
+        for (AnnotationMirror mirror : element.getAnnotationMirrors()) {
+            if (annotationFqn.equals(mirror.getAnnotationType().toString())) {
+                for (Map.Entry<? extends ExecutableElement, ? extends AnnotationValue> entry
+                        : mirror.getElementValues().entrySet()) {
+                    if (attribute.equals(entry.getKey().getSimpleName().toString())) {
+                        Object val = entry.getValue().getValue();
+                        return val != null ? val.toString() : null;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private boolean extractAnnotationBooleanValue(Element element, String annotationFqn,
+                                                   String attribute, boolean defaultValue) {
+        for (AnnotationMirror mirror : element.getAnnotationMirrors()) {
+            if (annotationFqn.equals(mirror.getAnnotationType().toString())) {
+                for (Map.Entry<? extends ExecutableElement, ? extends AnnotationValue> entry
+                        : mirror.getElementValues().entrySet()) {
+                    if (attribute.equals(entry.getKey().getSimpleName().toString())) {
+                        Object val = entry.getValue().getValue();
+                        if (val instanceof Boolean b) return b;
+                    }
+                }
+            }
+        }
+        return defaultValue;
     }
 
     /**
