@@ -100,8 +100,8 @@ public class CandiAnnotationProcessor extends AbstractProcessor {
                 fieldNames.add(fieldName);
                 fieldTypes.put(fieldName, simplifyType(fieldType));
 
-                boolean hasRequestParam = hasAnnotation(field, "org.springframework.web.bind.annotation.RequestParam");
-                boolean hasPathVariable = hasAnnotation(field, "org.springframework.web.bind.annotation.PathVariable");
+                boolean hasRequestParam = hasAnnotation(field, "candi.runtime.RequestParam");
+                boolean hasPathVariable = hasAnnotation(field, "candi.runtime.PathVariable");
                 boolean hasAutowired = hasAnnotation(field, "org.springframework.beans.factory.annotation.Autowired");
                 boolean isPageable = fieldType.equals("org.springframework.data.domain.Pageable");
 
@@ -116,22 +116,22 @@ public class CandiAnnotationProcessor extends AbstractProcessor {
                 // Detect @RequestParam
                 if (hasRequestParam) {
                     String paramName = extractAnnotationStringValue(field,
-                            "org.springframework.web.bind.annotation.RequestParam", "value");
+                            "candi.runtime.RequestParam", "value");
                     if (paramName == null || paramName.isEmpty()) {
                         paramName = extractAnnotationStringValue(field,
-                                "org.springframework.web.bind.annotation.RequestParam", "name");
+                                "candi.runtime.RequestParam", "name");
                     }
                     if (paramName == null || paramName.isEmpty()) {
                         paramName = fieldName;
                     }
                     String defaultValue = extractAnnotationStringValue(field,
-                            "org.springframework.web.bind.annotation.RequestParam", "defaultValue");
-                    // Spring uses "\n\t\t\n\t\t\n\uE000\uE001\uE002\n\t\t\t\t\n" as sentinel for "not set"
-                    if (defaultValue != null && defaultValue.contains("\uE000")) {
+                            "candi.runtime.RequestParam", "defaultValue");
+                    // Sentinel "\u0000" means "not set"
+                    if (defaultValue != null && defaultValue.equals("\u0000")) {
                         defaultValue = null;
                     }
                     boolean required = extractAnnotationBooleanValue(field,
-                            "org.springframework.web.bind.annotation.RequestParam", "required", true);
+                            "candi.runtime.RequestParam", "required", false);
                     requestParams.put(fieldName, new RequestParamInfo(paramName, defaultValue, required));
                     validateSetterAvailable(classElement, field, fieldName, classHasLombokSetter);
                 }
@@ -139,10 +139,10 @@ public class CandiAnnotationProcessor extends AbstractProcessor {
                 // Detect @PathVariable
                 if (hasPathVariable) {
                     String varName = extractAnnotationStringValue(field,
-                            "org.springframework.web.bind.annotation.PathVariable", "value");
+                            "candi.runtime.PathVariable", "value");
                     if (varName == null || varName.isEmpty()) {
                         varName = extractAnnotationStringValue(field,
-                                "org.springframework.web.bind.annotation.PathVariable", "name");
+                                "candi.runtime.PathVariable", "name");
                     }
                     if (varName == null || varName.isEmpty()) {
                         varName = fieldName;
@@ -171,8 +171,9 @@ public class CandiAnnotationProcessor extends AbstractProcessor {
             }
         }
 
-        // Extract action methods
+        // Extract action methods and detect init()
         Set<String> actionMethods = new LinkedHashSet<>();
+        boolean hasInitMethod = false;
         for (Element enclosed : classElement.getEnclosedElements()) {
             if (enclosed.getKind() == ElementKind.METHOD) {
                 ExecutableElement method = (ExecutableElement) enclosed;
@@ -180,6 +181,10 @@ public class CandiAnnotationProcessor extends AbstractProcessor {
                 if (hasAnnotation(method, "candi.runtime.Put")) actionMethods.add("PUT");
                 if (hasAnnotation(method, "candi.runtime.Delete")) actionMethods.add("DELETE");
                 if (hasAnnotation(method, "candi.runtime.Patch")) actionMethods.add("PATCH");
+                if ("init".equals(method.getSimpleName().toString())
+                        && method.getParameters().isEmpty()) {
+                    hasInitMethod = true;
+                }
             }
         }
 
@@ -195,7 +200,7 @@ public class CandiAnnotationProcessor extends AbstractProcessor {
                 pagePath, layoutName,
                 fieldNames, fieldTypes, actionMethods,
                 body,
-                requestParams, pathVariables, pageableFields);
+                requestParams, pathVariables, pageableFields, hasInitMethod);
 
         SubclassCodeGenerator generator = new SubclassCodeGenerator(input);
         String generatedSource = generator.generate();

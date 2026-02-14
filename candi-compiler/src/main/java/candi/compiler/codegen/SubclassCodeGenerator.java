@@ -46,7 +46,8 @@ public class SubclassCodeGenerator {
             BodyNode body,
             Map<String, RequestParamInfo> requestParams,  // fieldName -> info
             Map<String, String> pathVariables,             // fieldName -> varName
-            Set<String> pageableFields                     // fields of type Pageable
+            Set<String> pageableFields,                    // fields of type Pageable
+            boolean hasInitMethod                          // whether parent has init()
     ) {}
 
     private final SubclassInput input;
@@ -381,7 +382,9 @@ public class SubclassCodeGenerator {
             line("}");
         }
 
-        line("super.init();");
+        if (input.hasInitMethod()) {
+            line("super.init();");
+        }
         indent--;
         line("}");
     }

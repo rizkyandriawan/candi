@@ -33,7 +33,7 @@ class SubclassCodeGeneratorTest {
                 "/hello", null,
                 Set.of(), Map.of(), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("class HelloPage_Candi extends HelloPage implements CandiPage"));
         assertTrue(java.contains("@Component"));
@@ -51,7 +51,7 @@ class SubclassCodeGeneratorTest {
                 "/greet", null,
                 Set.of("title"), Map.of("title", "String"), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("this.getTitle()"), "Should use getter for field access");
         assertFalse(java.contains("this.title"), "Should NOT use direct field access");
@@ -66,7 +66,7 @@ class SubclassCodeGeneratorTest {
                 "/greet", null,
                 Set.of("name", "message"), Map.of("name", "String", "message", "String"), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("this.getName()"));
         assertTrue(java.contains("this.getMessage()"));
@@ -81,7 +81,7 @@ class SubclassCodeGeneratorTest {
                 "/about", "base",
                 Set.of(), Map.of(), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("private CandiLayout baseLayout;"));
         assertTrue(java.contains("baseLayout.render(out,"));
@@ -96,7 +96,7 @@ class SubclassCodeGeneratorTest {
                 "/submit", null,
                 Set.of(), Map.of(), new LinkedHashSet<>(List.of("POST", "DELETE")),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("methods = {\"GET\", \"POST\", \"DELETE\"}"));
     }
@@ -110,7 +110,7 @@ class SubclassCodeGeneratorTest {
                 "/posts", null,
                 Set.of(), Map.of(), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("extends PostsPage"));
         assertTrue(java.contains("implements CandiPage"));
@@ -126,7 +126,7 @@ class SubclassCodeGeneratorTest {
                 "/posts", null,
                 Set.of("allPosts"), Map.of("allPosts", "List<Post>"), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("for (int post_index = 0;"),
                 "for loop should use indexed iteration");
@@ -144,7 +144,7 @@ class SubclassCodeGeneratorTest {
                 "/post", null,
                 Set.of("post"), Map.of("post", "Post"), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("this.getPost().getTitle()"),
                 "Field access should use getter, property access should use getter");
@@ -159,7 +159,7 @@ class SubclassCodeGeneratorTest {
                 "/post", null,
                 Set.of("post"), Map.of("post", "Post"), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("this.getPost() == null ? null : this.getPost().getTitle()"));
     }
@@ -175,7 +175,7 @@ class SubclassCodeGeneratorTest {
                 "/posts", null,
                 Set.of(), Map.of(), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         // Inline rendering in render()
         assertTrue(java.contains("out.append(\"<h1>Posts</h1>\");"));
@@ -199,7 +199,7 @@ class SubclassCodeGeneratorTest {
                 "/search", null,
                 Set.of("title"), Map.of("title", "String"), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         // Fragment method should use getter access
         assertTrue(java.contains("this.getTitle()"), "Fragment should use getter for field access");
@@ -216,7 +216,7 @@ class SubclassCodeGeneratorTest {
                 "/test", null,
                 Set.of(), Map.of(), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         // Both fragments in switch
         assertTrue(java.contains("case \"header\" -> renderFragment_header(out);"));
@@ -236,7 +236,7 @@ class SubclassCodeGeneratorTest {
                 "/simple", null,
                 Set.of(), Map.of(), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertFalse(java.contains("renderFragment"), "Should not generate fragment methods when no fragments");
     }
@@ -250,7 +250,7 @@ class SubclassCodeGeneratorTest {
                 "/test", null,
                 Set.of(), Map.of(), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("renderFragment_search_results(out)"));
         assertTrue(java.contains("private void renderFragment_search_results(HtmlOutput out)"));
@@ -267,7 +267,7 @@ class SubclassCodeGeneratorTest {
                 null, "base",
                 Set.of(), Map.of(), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("class BaseLayout_Candi extends BaseLayout implements CandiLayout"));
         assertTrue(java.contains("@Component(\"baseLayout\")"));
@@ -289,7 +289,7 @@ class SubclassCodeGeneratorTest {
                 new LinkedHashMap<>(Map.of("type", "String", "message", "String")),
                 Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("class AlertWidget_Candi extends AlertWidget implements CandiComponent"));
         assertTrue(java.contains("@Component(\"AlertWidget__Widget\")"));
@@ -307,7 +307,7 @@ class SubclassCodeGeneratorTest {
                 new LinkedHashMap<>(Map.of("type", "String", "message", "String")),
                 Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("public void setParams(java.util.Map<String, Object> params)"));
         assertTrue(java.contains("this.setType((String) params.get(\"type\"));"),
@@ -329,7 +329,7 @@ class SubclassCodeGeneratorTest {
                 new LinkedHashMap<>(Map.of("type", "String", "message", "String")),
                 Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("this.getType()"), "Widget render should use getter");
         assertTrue(java.contains("this.getMessage()"), "Widget render should use getter");
@@ -346,7 +346,7 @@ class SubclassCodeGeneratorTest {
                 "/test", null,
                 Set.of(), Map.of(), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("ApplicationContext _applicationContext"));
         assertTrue(java.contains("Alert__Widget"));
@@ -364,7 +364,7 @@ class SubclassCodeGeneratorTest {
                 "/test", null,
                 Set.of("status"), Map.of("status", "String"), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("Objects.equals(this.getStatus(), \"active\")"));
     }
@@ -378,7 +378,7 @@ class SubclassCodeGeneratorTest {
                 "/test", null,
                 Set.of("canEdit"), Map.of("canEdit", "boolean"), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("this.getCanEdit()"), "if condition field should use getter");
     }
@@ -392,7 +392,7 @@ class SubclassCodeGeneratorTest {
                 "/test", null,
                 Set.of(), Map.of(), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("package com.example.pages;"));
     }
@@ -413,7 +413,7 @@ class SubclassCodeGeneratorTest {
                 "/test", null,
                 Set.of("items"), Map.of("items", "List<String>"), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("for (int item_index = 0;"), "Should generate indexed loop");
         assertTrue(java.contains("boolean item_first = (item_index == 0);"), "Should generate item_first");
@@ -431,7 +431,7 @@ class SubclassCodeGeneratorTest {
                 "/test", null,
                 Set.of("active"), Map.of("active", "boolean"), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("?"), "Should contain ternary operator");
         assertTrue(java.contains(":"), "Should contain ternary colon");
@@ -450,7 +450,7 @@ class SubclassCodeGeneratorTest {
                 "/test", null,
                 Set.of("name"), Map.of("name", "String"), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("this.getName()"), "Should use getter");
         assertTrue(java.contains("!= null"), "Should null-check");
@@ -468,7 +468,7 @@ class SubclassCodeGeneratorTest {
                 "/test", null,
                 Set.of("a", "b"), Map.of("a", "int", "b", "int"), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("this.getA()"), "Should use getter for a");
         assertTrue(java.contains("this.getB()"), "Should use getter for b");
@@ -486,7 +486,7 @@ class SubclassCodeGeneratorTest {
                 "/test", null,
                 Set.of("first", "last"), Map.of("first", "String", "last", "String"), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("String.valueOf"), "String concat should use String.valueOf");
     }
@@ -502,7 +502,7 @@ class SubclassCodeGeneratorTest {
                 "/test", null,
                 Set.of("amount"), Map.of("amount", "double"), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("-("), "Should contain unary minus");
         assertTrue(java.contains("this.getAmount()"), "Should use getter");
@@ -519,7 +519,7 @@ class SubclassCodeGeneratorTest {
                 "/test", null,
                 Set.of("name"), Map.of("name", "String"), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("candi.runtime.CandiFilters.upper("), "Should call CandiFilters.upper");
         assertTrue(java.contains("this.getName()"), "Should use getter as filter input");
@@ -534,7 +534,7 @@ class SubclassCodeGeneratorTest {
                 "/test", null,
                 Set.of("text"), Map.of("text", "String"), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("candi.runtime.CandiFilters.truncate("), "Should call CandiFilters.truncate");
         assertTrue(java.contains("100"), "Should pass truncate argument");
@@ -549,7 +549,7 @@ class SubclassCodeGeneratorTest {
                 "/test", null,
                 Set.of("name"), Map.of("name", "String"), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("candi.runtime.CandiFilters.upper(candi.runtime.CandiFilters.trim("),
                 "Should chain filters");
@@ -566,7 +566,7 @@ class SubclassCodeGeneratorTest {
                 "/test", null,
                 Set.of("items"), Map.of("items", "List<String>"), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("candi.runtime.CandiRuntime.index("), "Should use CandiRuntime.index");
         assertTrue(java.contains("this.getItems()"), "Should use getter");
@@ -581,7 +581,7 @@ class SubclassCodeGeneratorTest {
                 "/test", null,
                 Set.of("config"), Map.of("config", "Map<String,String>"), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("candi.runtime.CandiRuntime.index("), "Should use CandiRuntime.index");
         assertTrue(java.contains("\"key\""), "Should pass string key");
@@ -598,7 +598,7 @@ class SubclassCodeGeneratorTest {
                 "/test", null,
                 Set.of(), Map.of(), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("var greeting = \"Hello\";"), "Should generate local variable");
         assertTrue(java.contains("greeting"), "Should use the variable");
@@ -620,7 +620,7 @@ class SubclassCodeGeneratorTest {
                 "/test", null,
                 Set.of("status"), Map.of("status", "String"), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("Objects.equals("), "Switch should use Objects.equals");
         assertTrue(java.contains("\"active\""), "Should check active case");
@@ -640,7 +640,7 @@ class SubclassCodeGeneratorTest {
                 null, "main",
                 Set.of(), Map.of(), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("implements CandiLayout"), "Should implement CandiLayout");
         assertTrue(java.contains("slots.renderSlot(\"sidebar\", out)"), "Should render named slot");
@@ -656,7 +656,7 @@ class SubclassCodeGeneratorTest {
                 "/test", "main",
                 Set.of(), Map.of(), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("mainLayout.render(out,"), "Should call layout render");
         assertTrue(java.contains("\"sidebar\""), "Should dispatch sidebar block");
@@ -674,7 +674,7 @@ class SubclassCodeGeneratorTest {
                 null, "base",
                 Set.of(), Map.of(), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("out.renderStack(\"scripts\")"), "Should render stack");
     }
@@ -689,7 +689,7 @@ class SubclassCodeGeneratorTest {
                 "/test", null,
                 Set.of(), Map.of(), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("pushStack(\"scripts\""), "Should push to stack");
     }
@@ -705,7 +705,7 @@ class SubclassCodeGeneratorTest {
                 "/test", null,
                 Set.of(), Map.of(), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertFalse(java.contains("comment"), "Comment should not appear in generated code");
         assertTrue(java.contains("<h1>Hello</h1>"), "HTML before comment should remain");
@@ -723,7 +723,7 @@ class SubclassCodeGeneratorTest {
                 "/test", null,
                 Set.of(), Map.of(), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertTrue(java.contains("{{ raw_mustache }}"), "Verbatim content should preserve {{ }}");
     }
@@ -740,7 +740,7 @@ class SubclassCodeGeneratorTest {
                 Set.of("q"), Map.of("q", "String"), Set.of(),
                 body,
                 Map.of("q", new SubclassCodeGenerator.RequestParamInfo("q", "", false)),
-                Map.of(), Set.of()));
+                Map.of(), Set.of(), true));
 
         assertTrue(java.contains("HttpServletRequest _request"), "Should declare _request field");
         assertTrue(java.contains("_request.getParameter(\"q\")"), "Should read param 'q'");
@@ -758,7 +758,7 @@ class SubclassCodeGeneratorTest {
                 Set.of("page"), Map.of("page", "int"), Set.of(),
                 body,
                 Map.of("page", new SubclassCodeGenerator.RequestParamInfo("page", "1", false)),
-                Map.of(), Set.of()));
+                Map.of(), Set.of(), true));
 
         assertTrue(java.contains("_request.getParameter(\"page\")"), "Should read param 'page'");
         assertTrue(java.contains("_raw = \"1\""), "Should apply default value");
@@ -776,7 +776,7 @@ class SubclassCodeGeneratorTest {
                 Set.of("name"), Map.of("name", "String"), Set.of(),
                 body,
                 Map.of("name", new SubclassCodeGenerator.RequestParamInfo("name", null, true)),
-                Map.of(), Set.of()));
+                Map.of(), Set.of(), true));
 
         assertTrue(java.contains("throw new IllegalArgumentException"), "Should throw on missing required param");
         assertTrue(java.contains("'name' is missing"), "Error message should mention param name");
@@ -795,7 +795,7 @@ class SubclassCodeGeneratorTest {
                 body,
                 Map.of(),
                 Map.of("id", "id"),
-                Set.of()));
+                Set.of(), true));
 
         assertTrue(java.contains("HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE"),
                 "Should read from path variables");
@@ -816,7 +816,7 @@ class SubclassCodeGeneratorTest {
                 body,
                 Map.of(),
                 Map.of("id", "id"),
-                Set.of()));
+                Set.of(), true));
 
         assertTrue(java.contains("Long.valueOf(_raw)"), "Should use Long.valueOf for Long type");
     }
@@ -833,7 +833,7 @@ class SubclassCodeGeneratorTest {
                 Set.of("pageable"), Map.of("pageable", "Pageable"), Set.of(),
                 body,
                 Map.of(), Map.of(),
-                Set.of("pageable")));
+                Set.of("pageable"), true));
 
         assertTrue(java.contains("_request.getParameter(\"page\")"), "Should read page param");
         assertTrue(java.contains("_request.getParameter(\"size\")"), "Should read size param");
@@ -854,7 +854,7 @@ class SubclassCodeGeneratorTest {
                 "/simple", null,
                 Set.of(), Map.of(), Set.of(),
                 body,
-                Map.of(), Map.of(), Set.of()));
+                Map.of(), Map.of(), Set.of(), true));
 
         assertFalse(java.contains("init()"), "Should NOT generate init() when no bindings");
         assertFalse(java.contains("HttpServletRequest"), "Should NOT add _request when no bindings");
@@ -873,7 +873,7 @@ class SubclassCodeGeneratorTest {
                 body,
                 Map.of("q", new SubclassCodeGenerator.RequestParamInfo("q", "", false)),
                 Map.of("id", "id"),
-                Set.of()));
+                Set.of(), true));
 
         assertTrue(java.contains("_pathVars.get(\"id\")"), "Should bind path variable");
         assertTrue(java.contains("_request.getParameter(\"q\")"), "Should bind request param");
@@ -890,7 +890,7 @@ class SubclassCodeGeneratorTest {
                 Set.of("q"), Map.of("q", "String"), Set.of(),
                 body,
                 Map.of("q", new SubclassCodeGenerator.RequestParamInfo("q", null, false)),
-                Map.of(), Set.of()));
+                Map.of(), Set.of(), true));
 
         int setterPos = java.indexOf("this.setQ(");
         int superPos = java.indexOf("super.init()");
