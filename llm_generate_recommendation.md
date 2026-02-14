@@ -50,7 +50,7 @@ plugins {
 }
 
 group = 'com.example'
-version = '0.2.0'
+version = '0.2.1'
 
 java {
     toolchain {
@@ -69,12 +69,12 @@ dependencies {
     annotationProcessor 'org.projectlombok:lombok'
 
     // Candi framework (REQUIRED)
-    implementation 'dev.kakrizky.candi:candi-spring-boot-starter:0.2.0'
-    annotationProcessor 'dev.kakrizky.candi:candi-processor:0.2.0'
+    implementation 'dev.kakrizky.candi:candi-spring-boot-starter:0.2.1'
+    annotationProcessor 'dev.kakrizky.candi:candi-processor:0.2.1'
 
     // Candi UI plugins (OPTIONAL - built-in widget libraries)
-    implementation 'dev.kakrizky.candi:candi-ui-core:0.2.0'
-    implementation 'dev.kakrizky.candi:candi-ui-forms:0.2.0'
+    implementation 'dev.kakrizky.candi:candi-ui-core:0.2.1'
+    implementation 'dev.kakrizky.candi:candi-ui-forms:0.2.1'
 
     // Spring Boot
     implementation 'org.springframework.boot:spring-boot-starter-web'

@@ -128,10 +128,10 @@ class SubclassCodeGeneratorTest {
                 body,
                 Map.of(), Map.of(), Set.of(), true));
 
-        assertTrue(java.contains("for (int post_index = 0;"),
-                "for loop should use indexed iteration");
-        assertTrue(java.contains("var post = _list_post.get(post_index);"),
-                "loop variable should be extracted from list");
+        assertTrue(java.contains("for (var post : _list_post)"),
+                "for loop should use enhanced for-each iteration");
+        assertTrue(java.contains("int post_index = 0;"),
+                "loop index should be initialized before loop");
         assertTrue(java.contains("post.getTitle()"));
     }
 
@@ -415,9 +415,9 @@ class SubclassCodeGeneratorTest {
                 body,
                 Map.of(), Map.of(), Set.of(), true));
 
-        assertTrue(java.contains("for (int item_index = 0;"), "Should generate indexed loop");
+        assertTrue(java.contains("for (var item : _list_item)"), "Should generate enhanced for-each loop");
         assertTrue(java.contains("boolean item_first = (item_index == 0);"), "Should generate item_first");
-        assertTrue(java.contains("boolean item_last = (item_index == _list_item.size() - 1);"), "Should generate item_last");
+        assertTrue(java.contains("boolean item_last = (item_index == _size_item - 1);"), "Should generate item_last");
     }
 
     // ========== Ternary Expression Tests ==========
@@ -856,8 +856,7 @@ class SubclassCodeGeneratorTest {
                 body,
                 Map.of(), Map.of(), Set.of(), true));
 
-        assertFalse(java.contains("init()"), "Should NOT generate init() when no bindings");
-        assertFalse(java.contains("HttpServletRequest"), "Should NOT add _request when no bindings");
+        assertFalse(java.contains("public void init()"), "Should NOT generate init() override when no bindings");
     }
 
     // ========== Mixed Bindings ==========

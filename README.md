@@ -66,20 +66,20 @@ One file. Route, injection, data loading, form handling, HTML — all in one pla
 <dependency>
     <groupId>dev.kakrizky.candi</groupId>
     <artifactId>candi-spring-boot-starter</artifactId>
-    <version>0.2.0</version>
+    <version>0.2.1</version>
 </dependency>
 <dependency>
     <groupId>dev.kakrizky.candi</groupId>
     <artifactId>candi-processor</artifactId>
-    <version>0.2.0</version>
+    <version>0.2.1</version>
     <scope>provided</scope>
 </dependency>
 ```
 
 ```groovy
 // Gradle
-implementation 'dev.kakrizky.candi:candi-spring-boot-starter:0.2.0'
-annotationProcessor 'dev.kakrizky.candi:candi-processor:0.2.0'
+implementation 'dev.kakrizky.candi:candi-spring-boot-starter:0.2.1'
+annotationProcessor 'dev.kakrizky.candi:candi-processor:0.2.1'
 ```
 
 No plugin config. The annotation processor runs automatically during `javac`.

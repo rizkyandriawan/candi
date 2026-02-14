@@ -2,6 +2,22 @@
 
 All notable changes to Candi are documented in this file.
 
+## [0.2.1] — 2026-02-14
+
+### Fixed
+
+- **super.init() guard** — Generated `_Candi` subclass no longer calls `super.init()` when the parent page class has no `init()` method, preventing potential errors
+- **candi-demo module** — Excluded from Maven Central publishing to avoid missing sources/javadoc/signature errors during deploy
+
+### Added
+
+- **Field-level `@RequestParam` and `@PathVariable` annotations** — Added `candi.runtime.RequestParam` and `candi.runtime.PathVariable` annotations to candi-runtime, allowing pages to declare parameter bindings without depending on Spring Web annotations
+
+### Changed
+
+- Rewrote README with outcome-focused branding and AI Output Contract
+- Added AI Output Contract (12 rules) to LLM generation guide
+
 ## [0.2.0] — 2026-02-14
 
 ### Added
