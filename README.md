@@ -4,27 +4,25 @@
 
 <h1 align="center">Candi</h1>
 
-<p align="center"><strong>Fullstack web framework on Spring Boot. One file per page. Compiled to bytecode.</strong></p>
+<p align="center"><strong>Build production-grade Java web apps as fast as PHP — without sacrificing architecture.</strong></p>
 
-<p align="center"><em>Named after the ancient stone temples of Java — built to last, built by people who shipped.</em></p>
+<p align="center">One file per page. Spring Boot underneath. Designed to be AI-predictable.</p>
 
 <p align="center">
   <a href="https://candi.kakrizky.dev">Documentation</a> ·
-  <a href="https://candi.kakrizky.dev/docs/getting-started">Getting Started</a> ·
-  <a href="./llm_generate_recommendation.md">LLM Guide</a>
+  <a href="https://candi.kakrizky.dev/docs/getting-started">Quick Start</a> ·
+  <a href="./llm_generate_recommendation.md">AI Generation Guide</a>
 </p>
 
 ---
 
 ## Why Candi
 
-**PHP got it right — then hit a wall.** One file, one page. Route is the file. Logic next to markup. You open it, you see the whole thing. You ship fast. But no compile-time safety, no real DI, testing is awkward, architecture crumbles at scale.
-
-**Java shipped the backend — and lost the frontend.** The industry moved to proper languages, but frontend got separated. Two repos, two build systems, a REST API in between, and a JavaScript framework that needs its own ecosystem just to render a page.
-
-**Most projects don't need that.** Internal tools, admin panels, content sites, early startups — they need one codebase, one deploy, pages that load fast, forms that work without JavaScript.
-
-Candi brings back PHP's fullstack-in-one-file workflow, built on Spring Boot:
+- **One file per page.** Route, data loading, form handling, template — all in one Java class. You open the file, you see the whole thing.
+- **No API layer for CRUD SaaS.** No controllers, no DTOs, no REST endpoints, no fetch calls. Data flows from database to template. If your frontend only talks to your own backend, why have an API at all?
+- **Compile-time template safety.** Templates are compiled at build time. Errors fail compilation, not production. AI mistakes are caught before deploy.
+- **Spring Boot underneath.** Real DI, JPA, battle-tested in enterprise. Production-ready from day one, not just a prototype tool.
+- **AI-predictable architecture.** One canonical way to build pages. Strict patterns, no routing confusion, no controller/view separation. AI generates working code consistently.
 
 ```java
 @Getter @Setter
@@ -48,7 +46,7 @@ public class PostsPage {
     @RequestParam(defaultValue = "") String q;
     private List<Post> posts;
 
-    public void init() { posts = svc.search(q); }  // q auto-populated
+    public void init() { posts = svc.search(q); }
 
     @Post
     public ActionResult create() {
@@ -95,53 +93,54 @@ mvn spring-boot:run
 
 ```
 PostsPage.java ──▶ Annotation Processor ──▶ PostsPage_Candi.java
-                    (Lexer → Parser → Codegen)    extends PostsPage
-                                                    implements CandiPage
-                                                    + @Component
-                                                    + render()
+                    (compile time)               extends PostsPage
+                                                  implements CandiPage
+                                                  + @Component
+                                                  + render()
 ```
 
-Your class stays untouched. The processor generates a `_Candi` subclass with Spring annotations and a compiled `render()` method. Spring registers the generated class — your class is just the parent.
+Your class stays untouched. The processor generates a `_Candi` subclass with Spring annotations and a compiled `render()` method. Spring registers the generated class — your class is just the parent. Errors are caught at build, not in production.
 
-## Features
+## What You Get
 
-| Category | Features |
-|----------|----------|
-| **Core** | Compile-time safety, zero config, real Java with full IDE support |
-| **Template** | Ternary `? :`, null coalescing `??`, arithmetic, filters `\|`, index access `[]`, switch/case |
-| **Layout** | Named slots, asset stacking, reusable widgets |
-| **Data Binding** | Auto `@RequestParam`, `@PathVariable`, `Pageable` — fields populated before `init()` |
-| **Server** | AJAX fragments, hot reload with SSE live refresh, GraalVM support |
-| **DX** | One language, one process, one deploy. Spring DI just works. |
+| | |
+|---|---|
+| **One file per page** | Route, logic, template — one Java class. No controller/view split. |
+| **Zero API layer** | No REST endpoints, no DTOs, no fetch. Data goes straight to template. |
+| **Compile-time safety** | Template errors fail the build. Not runtime 500s in production. |
+| **Auto parameter binding** | `@RequestParam`, `@PathVariable`, `Pageable` — fields populated before `init()`. |
+| **Rich templates** | Ternary `? :`, null coalescing `??`, filters `\|`, arithmetic, switch/case, index `[]`. |
+| **Layouts & widgets** | Named slots, asset stacking, reusable components. |
+| **AJAX fragments** | Render named sections without JSON. Pair with htmx for interactivity. |
+| **Hot reload** | SSE-based live refresh. Edit, save, see changes instantly. |
+| **Spring Boot** | Real DI, JPA, security, testing. Everything Spring offers, out of the box. |
 
-## Vibe Coding Ready
+## AI-Predictable Architecture
 
-Candi's single-file architecture makes it **ideal for AI-assisted development**. A blog app in Candi has **30% fewer tokens** than React + NestJS (3,573 vs 5,097 tokens), half the files, one language, and zero API boilerplate. Every new page is one file — no route, no component, no endpoint, no fetch call to wire up.
+Candi is designed to be predictable for AI code generation. One way to build pages, strict patterns, no ambiguity.
 
-This means AI can generate **production-grade fullstack apps**, not just prototypes. The compile-time safety catches template errors at build, and Spring DI gives you real architecture — not just code that looks right.
+AI generates a full SaaS page in one prompt:
 
-See the [LLM Code Generation Guide](./llm_generate_recommendation.md) for patterns and best practices.
+```
+Prompt: "Build an item list page with search and pagination"
+Output:  One Java file, working CRUD, compiles on first try
+```
+
+This works because Candi reduces coordination complexity. No separate API to generate. No frontend state to manage. No routing config to wire up. One file, one page, done.
+
+See the [AI Generation Guide](./llm_generate_recommendation.md) for the full output contract and patterns.
+
+## Candi doesn't block you from evolving
+
+Business logic lives in Spring services. JPA entities work everywhere. You can add REST endpoints alongside Candi pages whenever you need them. Nothing is locked in.
 
 ## Documentation
 
-| Resource | Audience | What's inside |
-|----------|----------|---------------|
-| **[candi.kakrizky.dev](https://candi.kakrizky.dev)** | Developers | Full docs — setup, pages, templates, layouts, widgets, filters, dev tools, fragments |
-| **[llm_generate_recommendation.md](./llm_generate_recommendation.md)** | AI agents | Code generation patterns, do's/don'ts, common gotchas, full template syntax reference |
-| **This README** | Everyone | High-level overview and quick start |
-
-## Project Structure
-
-```
-candi/
-├── candi-compiler/             Lexer, parser, code generator
-├── candi-runtime/              CandiPage, RequestContext, HtmlOutput, handler mapping
-├── candi-processor/            JSR 269 annotation processor (generates _Candi subclasses)
-├── candi-dev-tools/            FileWatcher, IncrementalCompiler, SSE live reload
-├── candi-maven-plugin/         Maven goals for compilation
-├── candi-spring-boot-starter/  Auto-configuration, GraalVM hints
-└── candi-demo/                 Integration test app
-```
+| Resource | What's inside |
+|----------|---------------|
+| **[candi.kakrizky.dev](https://candi.kakrizky.dev)** | Full docs — setup, pages, templates, layouts, widgets, filters, dev tools |
+| **[AI Generation Guide](./llm_generate_recommendation.md)** | Output contract, patterns, do's/don'ts for LLMs generating Candi code |
+| **[CHANGELOG](./CHANGELOG.md)** | Version history |
 
 ## License
 

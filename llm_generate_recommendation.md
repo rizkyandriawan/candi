@@ -9,15 +9,32 @@ Best practices and reference patterns for LLMs generating code in the Candi full
 
 ## Why Candi for AI Code Generation
 
-Candi's single-file architecture makes it **ideal for LLM-assisted development** ("vibe coding"). Compared to typical React + NestJS setups:
+Candi is designed to be **predictable for AI code generation**. One canonical way to build pages, strict patterns, no ambiguity. AI generates working code consistently because:
 
-- **30% fewer tokens** per app (3,573 vs 5,097 tokens for a blog app)
-- **Half the files** — one file per page, no separate component/route/API/fetch
+- **One file per page** — no coordination between controllers, views, routes, API endpoints
 - **One language** — Java for everything (logic + template), no context-switching
-- **Zero API boilerplate** — no REST endpoints, no fetch calls, no JSON serialization
-- **Compile-time safety** — template errors caught at build, not at runtime
+- **Zero API layer** — no REST endpoints, no fetch calls, no JSON serialization, no DTOs
+- **Compile-time safety** — template errors caught at build, AI mistakes caught before deploy
+- **Strict patterns** — every page follows the same structure, reducing hallucination surface
 
 This means AI can generate **production-grade fullstack apps**, not just prototypes. Every new page is one file. Spring DI gives real architecture. The compile-time template engine catches errors before deployment.
+
+## AI Output Contract
+
+LLMs generating Candi code **MUST** follow these 12 rules. Following them eliminates 90% of generation errors and ensures code compiles on first try.
+
+1. **One file per page** — never split logic and template into separate files
+2. **`@Getter` on all page/layout/widget classes** — the generated `_Candi` subclass accesses fields via getters
+3. **`@Setter` on classes with `@RequestParam`/`@PathVariable`** — auto-binding needs setters
+4. **`Boolean` wrapper for boolean template fields** — never `boolean` primitive (Lombok generates `isXxx()` for primitives, Candi expects `getXxx()`)
+5. **Never inject `RequestContext` in layouts** — layouts are singletons, `RequestContext` is request-scoped
+6. **Never use `Map<String, Object>` in `{{ for }}` loops** — Maps don't have getter methods. Use POJOs with `@Getter @AllArgsConstructor`
+7. **PRG pattern** — `@Post` methods return `ActionResult.redirect()` on success, `ActionResult.render()` on validation error
+8. **Null-check `ctx.form()` and `ctx.query()`** — they return null, not empty string
+9. **Pre-compute display values in Java** — not in templates. Format dates, compute badge classes, resolve lookups in `init()` or the POJO constructor
+10. **Use `SelectOption` for dropdowns, `CheckboxOption` for checkboxes** — built-in POJOs in `candi.runtime` with proper getters
+11. **Prefer `@RequestParam`/`@PathVariable` over manual `ctx.query()`/`ctx.path()`** — auto-binding is cleaner and type-safe
+12. **Import from `candi.runtime`** — never `candi.annotation` (that package doesn't exist)
 
 ---
 
